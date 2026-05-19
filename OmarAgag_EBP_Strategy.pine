@@ -1,0 +1,608 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Omar Agag EBP Strategy — TradingView Indicator (Pine Script v6)
+// Engulfing Bar Play | Swing Trading Variation
+// Best on: 4H, Daily, Weekly | XAUUSD, EURUSD, NAS100
+// ═══════════════════════════════════════════════════════════════════════════════
+//@version=6
+indicator(title="Omar Agag EBP Strategy", shorttitle="EBP", overlay=true,
+          max_lines_count=500, max_labels_count=500)
+
+// ─── INPUTS ────────────────────────────────────────────────────────────────────
+showBull   = input.bool(defval=true,  title="Show Bullish Signals",    group="Settings")
+showBear   = input.bool(defval=true,  title="Show Bearish Signals",    group="Settings")
+showLevels = input.bool(defval=true,  title="Show Fib Levels",         group="Settings")
+showLabels = input.bool(defval=true,  title="Show Labels",             group="Settings")
+showBE     = input.bool(defval=true,  title="Show BE Alerts on Chart", group="Settings")
+extBars    = input.int( defval=30,    title="Extend Levels (bars)",    group="Settings", minval=5, maxval=200)
+
+useFilter    = input.bool(defval=true, title="Enable Date Filter",   group="Backtest Period")
+lookbackDays = input.int( defval=30,   title="Lookback Days",        group="Backtest Period", minval=1, maxval=9999,
+                          tooltip="Stats cover only the last N days. Disable filter for all-time stats.")
+
+acc1Size     = input.float(defval=100000.0, title="Account 1 Balance ($)",          group="Lot Calculator", minval=100, step=1000)
+acc1Risk     = input.float(defval=1.0,      title="Account 1 Risk %",               group="Lot Calculator", minval=0.01, maxval=10, step=0.05)
+acc2Size     = input.float(defval=25000.0,  title="Account 2 Balance ($)",          group="Lot Calculator", minval=100, step=1000)
+acc2Risk     = input.float(defval=0.50,     title="Account 2 Risk %",               group="Lot Calculator", minval=0.01, maxval=10, step=0.05)
+acc3Size     = input.float(defval=10000.0,  title="Account 3 Balance ($)",          group="Lot Calculator", minval=100, step=1000)
+acc3Risk     = input.float(defval=0.50,     title="Account 3 Risk %",               group="Lot Calculator", minval=0.01, maxval=10, step=0.05)
+csOverride   = input.float(defval=0.0,      title="Contract Size Override (0=auto)",group="Lot Calculator", minval=0,
+                           tooltip="0 = auto-detect per instrument. Override: 100000=forex | 100=Gold/Silver | 1=indices/crypto")
+
+pair1Sym = input.symbol(defval="FX:GBPCAD", title="Watchlist Pair 1", group="Watchlist")
+pair2Sym = input.symbol(defval="FX:AUDCHF", title="Watchlist Pair 2", group="Watchlist")
+pair3Sym = input.symbol(defval="FX:EURUSD", title="Watchlist Pair 3", group="Watchlist")
+pair4Sym = input.symbol(defval="FX:NZDJPY", title="Watchlist Pair 4", group="Watchlist")
+
+cBullS = input.color(defval=#00e676, title="Strong Bullish", group="Colors")
+cBullW = input.color(defval=#69f0ae, title="Weak Bullish",   group="Colors")
+cBearS = input.color(defval=#ff1744, title="Strong Bearish", group="Colors")
+cBearW = input.color(defval=#ff8a80, title="Weak Bearish",   group="Colors")
+cEntry = input.color(defval=#2196f3, title="Entry",          group="Colors")
+cSL    = input.color(defval=#f44336, title="Stop Loss",      group="Colors")
+cTP    = input.color(defval=#4caf50, title="Take Profit",    group="Colors")
+
+// ─── AUTO CONTRACT SIZE ────────────────────────────────────────────────────────
+// Detects instrument type from ticker so lot sizes are correct by default
+bool _isGold   = str.contains(syminfo.ticker, "XAU")   or str.contains(syminfo.ticker, "GOLD")
+bool _isSilver = str.contains(syminfo.ticker, "XAG")   or str.contains(syminfo.ticker, "SILVER")
+bool _isIndex  = str.contains(syminfo.ticker, "NAS")   or str.contains(syminfo.ticker, "NDX")   or
+                 str.contains(syminfo.ticker, "US30")  or str.contains(syminfo.ticker, "DJI")   or
+                 str.contains(syminfo.ticker, "SPX")   or str.contains(syminfo.ticker, "SP500") or
+                 str.contains(syminfo.ticker, "UK100") or str.contains(syminfo.ticker, "DE40")  or
+                 str.contains(syminfo.ticker, "JP225") or str.contains(syminfo.ticker, "AUS200")
+bool _isCrypto = syminfo.type == "crypto"
+float _autoCS  = _isGold ? 100.0 : _isSilver ? 5000.0 : (_isIndex or _isCrypto) ? 1.0 : 100000.0
+float contractSize = csOverride > 0 ? csOverride : _autoCS
+
+// ─── EBP DETECTION ─────────────────────────────────────────────────────────────
+float prevBodyHigh = math.max(open[1], close[1])
+float prevBodyLow  = math.min(open[1], close[1])
+float cRange       = high - low
+
+bool bullEBP = cRange > 0 and low < low[1]   and close > prevBodyHigh
+bool bearEBP = cRange > 0 and high > high[1] and close < prevBodyLow
+
+float bullWick = bullEBP ? (high - close) / cRange : na
+float bearWick = bearEBP ? (close - low)  / cRange : na
+
+bool strongBull = bullEBP and bullWick <= 0.15
+bool weakBull   = bullEBP and bullWick >  0.15
+bool strongBear = bearEBP and bearWick <= 0.15
+bool weakBear   = bearEBP and bearWick >  0.15
+
+// ─── LEVEL CALCULATIONS ────────────────────────────────────────────────────────
+float bF25  = high - 0.25 * cRange
+float bF50  = high - 0.50 * cRange
+float bF75  = high - 0.75 * cRange
+float bF100 = low
+float bullStrongTP = bF25 + 2.0 * (bF25 - bF75)
+float bullWeakTP   = bF50 + 2.0 * (bF50 - bF100)
+
+float rF25  = low + 0.25 * cRange
+float rF50  = low + 0.50 * cRange
+float rF75  = low + 0.75 * cRange
+float rF100 = high
+float bearStrongTP = rF25 - 2.0 * (rF75 - rF25)
+float bearWeakTP   = rF50 - 2.0 * (rF100 - rF50)
+
+// ─── SIGNAL SHAPES (all history) ───────────────────────────────────────────────
+plotshape(series=showBull and strongBull, title="Strong Bull EBP",
+          style=shape.triangleup,   location=location.belowbar, color=cBullS, size=size.normal, text="EBP+")
+plotshape(series=showBull and weakBull,   title="Weak Bull EBP",
+          style=shape.triangleup,   location=location.belowbar, color=cBullW, size=size.small,  text="EBP")
+plotshape(series=showBear and strongBear, title="Strong Bear EBP",
+          style=shape.triangledown, location=location.abovebar, color=cBearS, size=size.normal, text="EBP+")
+plotshape(series=showBear and weakBear,   title="Weak Bear EBP",
+          style=shape.triangledown, location=location.abovebar, color=cBearW, size=size.small,  text="EBP")
+
+bgcolor(color=showBull and bullEBP ? color.new(#00e676, 88) : na, title="Bull EBP BG")
+bgcolor(color=showBear and bearEBP ? color.new(#ff1744, 88) : na, title="Bear EBP BG")
+
+// ─── LATEST SIGNAL TRACKING ────────────────────────────────────────────────────
+var float latestEntry  = na
+var float latestSL     = na
+var float latestTP     = na
+var bool  latestIsBull = true
+var bool  latestIsStr  = false
+
+// ─── DRAWINGS — ONLY LATEST SIGNAL ─────────────────────────────────────────────
+var line[]  aLines  = array.new_line(0)
+var label[] aLabels = array.new_label(0)
+
+// newSignal: for plotshapes only (shows preview on live bar)
+// newSignalConfirmed: for drawings/levels/simulation — locked to closed candle only
+bool newSignal          = (bullEBP and showBull) or (bearEBP and showBear)
+bool newSignalConfirmed = newSignal and barstate.isconfirmed
+
+if newSignalConfirmed
+    int ln = array.size(aLines)
+    if ln > 0
+        for i = 0 to ln - 1
+            line.delete(array.get(aLines, i))
+    array.clear(aLines)
+    int lb = array.size(aLabels)
+    if lb > 0
+        for i = 0 to lb - 1
+            label.delete(array.get(aLabels, i))
+    array.clear(aLabels)
+
+    bool  isBull   = bullEBP
+    bool  isStrong = isBull ? strongBull : strongBear
+    int   x1       = bar_index
+    int   x2       = bar_index + extBars
+
+    float f0   = isBull ? high                 : low
+    float f15  = isBull ? high - 0.15 * cRange : low + 0.15 * cRange
+    float f25  = isBull ? bF25  : rF25
+    float f50  = isBull ? bF50  : rF50
+    float f75  = isBull ? bF75  : rF75
+    float f100 = isBull ? bF100 : rF100
+
+    float entryLvl = isStrong ? (isBull ? bF25  : rF25)  : (isBull ? bF50  : rF50)
+    float slLvl    = isStrong ? (isBull ? bF75  : rF75)  : (isBull ? bF100 : rF100)
+    float tpLvl    = isBull   ? (isStrong ? bullStrongTP : bullWeakTP) : (isStrong ? bearStrongTP : bearWeakTP)
+
+    latestEntry  := entryLvl
+    latestSL     := slLvl
+    latestTP     := tpLvl
+    latestIsBull := isBull
+    latestIsStr  := isStrong
+
+    // ── Dynamic alert with prices + lot sizes ──────────────────────────────────
+    string dirWord = isBull ? "BUY" : "SELL"
+    // Compute lot sizes inline for the alert message
+    float _slDist  = math.abs(entryLvl - slLvl)
+    float _rpl     = _slDist > 0 ? _slDist * contractSize * syminfo.pointvalue : na
+    float _lot1    = not na(_rpl) ? (acc1Size * acc1Risk / 100.0) / _rpl : na
+    float _lot2    = not na(_rpl) ? (acc2Size * acc2Risk / 100.0) / _rpl : na
+    float _lot3    = not na(_rpl) ? (acc3Size * acc3Risk / 100.0) / _rpl : na
+    string _l1 = not na(_lot1) ? str.tostring(_lot1, "#.##") + " lots" : "N/A"
+    string _l2 = not na(_lot2) ? str.tostring(_lot2, "#.##") + " lots" : "N/A"
+    string _l3 = not na(_lot3) ? str.tostring(_lot3, "#.##") + " lots" : "N/A"
+    string _r1 = "$" + str.tostring(acc1Size * acc1Risk / 100.0, "#")
+    string _r2 = "$" + str.tostring(acc2Size * acc2Risk / 100.0, "#")
+    string _r3 = "$" + str.tostring(acc3Size * acc3Risk / 100.0, "#")
+    string alertMsg =
+         syminfo.ticker + " " + dirWord + "\n\n" +
+         "ENTRY: " + str.tostring(entryLvl, format.mintick) + "\n" +
+         "TP: "    + str.tostring(tpLvl,    format.mintick) + "\n" +
+         "SL: "    + str.tostring(slLvl,    format.mintick) + "\n\n" +
+         "$" + str.tostring(acc1Size / 1000, "#") + "K LOT SIZE: " + _l1 + " (" + _r1 + " risk)\n" +
+         "$" + str.tostring(acc2Size / 1000, "#") + "K LOT SIZE: " + _l2 + " (" + _r2 + " risk)\n" +
+         "$" + str.tostring(acc3Size / 1000, "#") + "K LOT SIZE: " + _l3 + " (" + _r3 + " risk)"
+    alert(alertMsg, alert.freq_once_per_bar)
+
+    if showLevels
+        array.push(aLines, line.new(x1=x1, y1=f0,   x2=x2, y2=f0,   color=color.new(color.gray, 30), width=1, style=line.style_dashed))
+        array.push(aLines, line.new(x1=x1, y1=f15,  x2=x2, y2=f15,  color=color.new(color.gray, 65), width=1, style=line.style_dotted))
+        array.push(aLines, line.new(x1=x1, y1=f25,  x2=x2, y2=f25,  color=color.new(cEntry, 50),     width=1, style=line.style_solid))
+        array.push(aLines, line.new(x1=x1, y1=f50,  x2=x2, y2=f50,  color=color.new(color.yellow,45),width=1, style=line.style_dashed))
+        array.push(aLines, line.new(x1=x1, y1=f75,  x2=x2, y2=f75,  color=color.new(cSL, 50),        width=1, style=line.style_solid))
+        array.push(aLines, line.new(x1=x1, y1=f100, x2=x2, y2=f100, color=color.new(color.gray, 30), width=1, style=line.style_dashed))
+
+        if isStrong
+            array.push(aLines, line.new(x1=x1, y1=entryLvl, x2=x2, y2=entryLvl, color=cEntry, width=2, style=line.style_solid))
+            array.push(aLines, line.new(x1=x1, y1=slLvl,    x2=x2, y2=slLvl,    color=cSL,    width=2, style=line.style_solid))
+            array.push(aLines, line.new(x1=x1, y1=tpLvl,    x2=x2, y2=tpLvl,    color=cTP,    width=2, style=line.style_solid))
+            if showLabels
+                array.push(aLabels, label.new(x=x2, y=entryLvl, text="ENTRY 25%  " + str.tostring(entryLvl, format.mintick), color=cEntry, textcolor=color.white, style=label.style_label_left, size=size.small))
+                array.push(aLabels, label.new(x=x2, y=slLvl,    text="SL 75%  "    + str.tostring(slLvl,    format.mintick), color=cSL,    textcolor=color.white, style=label.style_label_left, size=size.small))
+                array.push(aLabels, label.new(x=x2, y=tpLvl,    text="TP 2R  "     + str.tostring(tpLvl,    format.mintick), color=cTP,    textcolor=color.white, style=label.style_label_left, size=size.small))
+        else
+            array.push(aLines, line.new(x1=x1, y1=entryLvl, x2=x2, y2=entryLvl, color=cEntry, width=2, style=line.style_dashed))
+            array.push(aLines, line.new(x1=x1, y1=slLvl,    x2=x2, y2=slLvl,    color=cSL,    width=2, style=line.style_dashed))
+            array.push(aLines, line.new(x1=x1, y1=tpLvl,    x2=x2, y2=tpLvl,    color=cTP,    width=2, style=line.style_dashed))
+            if showLabels
+                array.push(aLabels, label.new(x=x2, y=entryLvl, text="ENTRY 50%  " + str.tostring(entryLvl, format.mintick), color=cEntry, textcolor=color.white, style=label.style_label_left, size=size.small))
+                array.push(aLabels, label.new(x=x2, y=slLvl,    text="SL 100%  "   + str.tostring(slLvl,    format.mintick), color=cSL,    textcolor=color.white, style=label.style_label_left, size=size.small))
+                array.push(aLabels, label.new(x=x2, y=tpLvl,    text="TP 2R  "     + str.tostring(tpLvl,    format.mintick), color=cTP,    textcolor=color.white, style=label.style_label_left, size=size.small))
+
+// ─── TRADE SIMULATION ──────────────────────────────────────────────────────────
+// status: 0=pending fill | 1=active | 2=win (2R hit) | 3=loss (SL hit)
+var float[] tEntry  = array.new_float(0)
+var float[] tSL     = array.new_float(0)
+var float[] tTP     = array.new_float(0)
+var bool[]  tBull   = array.new_bool(0)
+var int[]   tStatus = array.new_int(0)
+var int[]   tBar    = array.new_int(0)
+var int[]   tTime   = array.new_int(0)
+
+if newSignalConfirmed
+    // Expire any pending trades that were never filled — new signal supersedes them
+    int _n = array.size(tStatus)
+    if _n > 0
+        for _i = 0 to _n - 1
+            if array.get(tStatus, _i) == 0
+                array.set(tStatus, _i, 4)
+    bool  isB = bullEBP
+    bool  isS = isB ? strongBull : strongBear
+    float ep  = isB ? (isS ? bF25 : bF50)  : (isS ? rF25 : rF50)
+    float sp  = isB ? (isS ? bF75 : bF100) : (isS ? rF75 : rF100)
+    float tp  = isB ? (isS ? bullStrongTP : bullWeakTP) : (isS ? bearStrongTP : bearWeakTP)
+    array.push(tEntry,  ep)
+    array.push(tSL,     sp)
+    array.push(tTP,     tp)
+    array.push(tBull,   isB)
+    array.push(tStatus, 0)
+    array.push(tBar,    bar_index)
+    array.push(tTime,   time)
+
+int nTr = array.size(tStatus)
+if nTr > 0
+    for i = 0 to nTr - 1
+        int st = array.get(tStatus, i)
+        if st == 0 or st == 1
+            float ep   = array.get(tEntry,  i)
+            float sl   = array.get(tSL,     i)
+            float tp   = array.get(tTP,     i)
+            bool  bull = array.get(tBull,   i)
+            int   sbar = array.get(tBar,    i)
+            if bar_index > sbar
+                if st == 0
+                    bool filled = bull ? low <= ep : high >= ep
+                    if filled
+                        array.set(tStatus, i, 1)
+                    else
+                        // Price moved 1R in profit direction without filling = trade invalidated
+                        float _1R_inv = math.abs(ep - sl)
+                        bool  tpMiss  = bull ? high >= ep + _1R_inv : low <= ep - _1R_inv
+                        if tpMiss
+                            array.set(tStatus, i, 4)
+                if array.get(tStatus, i) == 1
+                    bool tpHit = bull ? high >= tp : low  <= tp
+                    bool slHit = bull ? low  <= sl : high >= sl
+                    if tpHit and slHit
+                        bool tpFirst = bull ? (tp - open) < (open - sl) : (open - tp) < (sl - open)
+                        array.set(tStatus, i, tpFirst ? 2 : 3)
+                    else if tpHit
+                        array.set(tStatus, i, 2)
+                    else if slHit
+                        array.set(tStatus, i, 3)
+
+// ─── BREAK-EVEN DETECTION ──────────────────────────────────────────────────────
+// Find the most recent active trade (status == 1)
+int  activeSrcBar  = -1
+bool activeIsBull  = true
+
+if nTr > 0
+    for i = nTr - 1 to 0
+        if array.get(tStatus, i) == 1
+            activeSrcBar := array.get(tBar, i)
+            activeIsBull := array.get(tBull, i)
+            break
+
+// New HH = this bar's high is higher than both prior bars → first bar of a new leg up
+// New LL = this bar's low  is lower  than both prior bars → first bar of a new leg down
+bool newHH = high > math.max(high[1], high[2])
+bool newLL = low  < math.min(low[1],  low[2])
+
+// Only fire once per active trade (track which trade bar we already signalled)
+var int lastBETradeBar = -1
+
+bool beLong  = activeSrcBar >= 0 and     activeIsBull and newHH and bar_index > activeSrcBar + 1 and lastBETradeBar != activeSrcBar
+bool beShort = activeSrcBar >= 0 and not activeIsBull and newLL and bar_index > activeSrcBar + 1 and lastBETradeBar != activeSrcBar
+
+if showBE and beLong
+    lastBETradeBar := activeSrcBar
+    label.new(x=bar_index, y=low,
+              text=" ⚡ MOVE SL TO BE ",
+              color=color.new(#ff9800, 0), textcolor=color.white,
+              style=label.style_label_up, size=size.normal)
+    alert("⚡ MOVE SL TO BREAKEVEN\n" +
+          syminfo.ticker + " BUY — " + timeframe.period + "\n\n" +
+          "New Higher High formed.\n" +
+          "Move your Stop Loss to: " + str.tostring(latestEntry, format.mintick) + " (entry price)\n" +
+          "Your trade is now risk-free.", alert.freq_once_per_bar)
+
+if showBE and beShort
+    lastBETradeBar := activeSrcBar
+    label.new(x=bar_index, y=high,
+              text=" ⚡ MOVE SL TO BE ",
+              color=color.new(#ff9800, 0), textcolor=color.white,
+              style=label.style_label_down, size=size.normal)
+    alert("⚡ MOVE SL TO BREAKEVEN\n" +
+          syminfo.ticker + " SELL — " + timeframe.period + "\n\n" +
+          "New Lower Low formed.\n" +
+          "Move your Stop Loss to: " + str.tostring(latestEntry, format.mintick) + " (entry price)\n" +
+          "Your trade is now risk-free.", alert.freq_once_per_bar)
+
+// ─── ENTRY HIT & TRADE INVALIDATION ALERTS ────────────────────────────────────
+// pendFired  = entry zone was touched → alert "check your fill" (fires once)
+// pendInvld  = TP hit before entry filled → alert "cancel your limit order" (fires once)
+// Resets on every new confirmed signal so it always tracks the latest trade
+var bool pendFired  = false
+var bool pendInvld  = false
+var int  pendSrcBar = -1
+
+if newSignalConfirmed
+    pendFired  := false
+    pendInvld  := false
+    pendSrcBar := bar_index
+
+bool watchPend = not na(latestEntry) and pendSrcBar >= 0 and
+                 bar_index > pendSrcBar and not pendFired and not pendInvld
+
+if watchPend
+    bool   entryHit  = latestIsBull ? low  <= latestEntry : high >= latestEntry
+    float  _1R       = math.abs(latestEntry - latestSL)
+    bool   oneRHit   = latestIsBull ? high >= latestEntry + _1R : low <= latestEntry - _1R
+    string _dir      = latestIsBull ? "BUY" : "SELL"
+
+    if entryHit
+        pendFired := true
+        alert("✅ ENTRY ZONE HIT — " + syminfo.ticker + " " + _dir + "\n\n" +
+              "Price reached entry: " + str.tostring(latestEntry, format.mintick) + "\n" +
+              "Check your limit order — should be filled now.\n" +
+              "TP: " + str.tostring(latestTP, format.mintick) +
+              " | SL: " + str.tostring(latestSL, format.mintick),
+              alert.freq_once_per_bar)
+    else if oneRHit
+        pendInvld := true
+        alert("❌ TRADE INVALIDATED — " + syminfo.ticker + " " + _dir + "\n\n" +
+              "Price moved 1R+ without filling entry.\n" +
+              "Cancel your limit order at: " + str.tostring(latestEntry, format.mintick) + "\n" +
+              "The move already happened without you.",
+              alert.freq_once_per_bar)
+
+// ─── DATE FILTER ───────────────────────────────────────────────────────────────
+int startMs = useFilter ? timenow - lookbackDays * 86400000 : 0
+
+string fromStr = useFilter ? str.format_time(startMs, "dd MMM yyyy", syminfo.timezone) : "All History"
+string toStr   =             str.format_time(timenow, "dd MMM yyyy", syminfo.timezone)
+
+// ─── FILTERED STATS ────────────────────────────────────────────────────────────
+int sTotal   = 0
+int sWins    = 0
+int sLosses  = 0
+int sActive  = 0
+int sPending = 0
+
+if nTr > 0
+    for i = 0 to nTr - 1
+        if array.get(tTime, i) >= startMs
+            int st = array.get(tStatus, i)
+            sTotal += 1
+            if st == 0
+                sPending += 1
+            else if st == 1
+                sActive  += 1
+            else if st == 2
+                sWins    += 1
+            else if st == 3
+                sLosses  += 1
+
+int   sResolved = sWins + sLosses
+int   sFilled   = sResolved + sActive
+float sWinRate  = sResolved > 0 ? sWins * 100.0 / sResolved : 0.0
+float netR      = sWins * 2.0 - sLosses * 1.0
+float expVal    = sResolved > 0 ? (sWinRate / 100.0) * 2.0 - (1.0 - sWinRate / 100.0) * 1.0 : 0.0
+
+// ─── LOT SIZE CALCULATION ──────────────────────────────────────────────────────
+// riskPerLot = SL_distance × contract_size × point_value
+// lot = risk_amount / riskPerLot
+float slDist     = not na(latestEntry) and not na(latestSL) ? math.abs(latestEntry - latestSL) : na
+float riskPerLot = not na(slDist) and slDist > 0 ? slDist * contractSize * syminfo.pointvalue : na
+float lot1       = not na(riskPerLot) ? (acc1Size * acc1Risk / 100.0) / riskPerLot : na
+float lot2       = not na(riskPerLot) ? (acc2Size * acc2Risk / 100.0) / riskPerLot : na
+float lot3       = not na(riskPerLot) ? (acc3Size * acc3Risk / 100.0) / riskPerLot : na
+float risk1Amt   = acc1Size * acc1Risk / 100.0
+float risk2Amt   = acc2Size * acc2Risk / 100.0
+float risk3Amt   = acc3Size * acc3Risk / 100.0
+
+// ─── MULTI-PAIR EBP SIGNALS ────────────────────────────────────────────────────
+// Returns 0=no signal, 1=bull EBP, 2=bear EBP on the current bar for each pair
+f_ebpState(sym) =>
+    request.security(sym, timeframe.period,
+        (high - low) > 0 and low  < low[1]   and close > math.max(open[1], close[1]) ? 1 :
+        (high - low) > 0 and high > high[1]  and close < math.min(open[1], close[1]) ? 2 : 0)
+
+int p1sig = f_ebpState(pair1Sym)
+int p2sig = f_ebpState(pair2Sym)
+int p3sig = f_ebpState(pair3Sym)
+int p4sig = f_ebpState(pair4Sym)
+
+// Helper to strip exchange prefix: "FX:GBPCAD" → "GBPCAD"
+f_stripExch(sym) =>
+    string[] parts = str.split(sym, ":")
+    array.size(parts) > 1 ? array.get(parts, 1) : sym
+
+f_sigText(sig) =>
+    sig == 1 ? " BULL EBP " : sig == 2 ? " BEAR EBP " : "    —    "
+
+f_sigBG(sig) =>
+    sig == 1 ? color.new(#1b5e20, 20) : sig == 2 ? color.new(#b71c1c, 20) : color.new(#1a1a2e, 5)
+
+f_sigFG(sig) =>
+    sig == 1 ? color.new(#00e676, 0) : sig == 2 ? color.new(#ff5252, 0) : color.new(color.gray, 40)
+
+// ─── SHARED COLORS ─────────────────────────────────────────────────────────────
+color cHdr    = color.new(#1565c0, 10)
+color cFilter = color.new(#1a3a1a, 5)
+color cRow    = color.new(#0d1117, 12)
+color cLbl    = color.new(color.silver, 10)
+color cVal    = color.white
+color cGrn    = color.new(#4caf50, 0)
+color cRed    = color.new(#f44336, 0)
+color cYel    = color.new(#ffeb3b, 0)
+color cBlue   = color.new(#2196f3, 0)
+color cGray   = color.new(color.gray, 30)
+
+// ─── STATS DASHBOARD (top right) ───────────────────────────────────────────────
+var table dash = table.new(
+     position    = position.top_right,
+     columns     = 2,
+     rows        = 12,
+     bgcolor     = color.new(#0d1117, 8),
+     border_color= color.new(color.gray, 55),
+     border_width= 1,
+     frame_color = color.new(color.gray, 35),
+     frame_width = 1)
+
+table.cell(table_id=dash, column=0, row=0, text=" EBP STATS ",
+           bgcolor=cHdr, text_color=cVal, text_size=size.normal)
+table.cell(table_id=dash, column=1, row=0, text=" " + timeframe.period + " ",
+           bgcolor=cHdr, text_color=cYel, text_size=size.normal)
+
+string periodLabel = useFilter ? "Last " + str.tostring(lookbackDays) + "d" : "All Time"
+table.cell(table_id=dash, column=0, row=1, text=" Period ",
+           bgcolor=cFilter, text_color=cLbl, text_size=size.small)
+table.cell(table_id=dash, column=1, row=1, text=" " + periodLabel + " ",
+           bgcolor=cFilter, text_color=cYel, text_size=size.small)
+
+table.cell(table_id=dash, column=0, row=2, text=" From ",
+           bgcolor=cFilter, text_color=cLbl, text_size=size.tiny)
+table.cell(table_id=dash, column=1, row=2, text=" " + fromStr + " ",
+           bgcolor=cFilter, text_color=cGray, text_size=size.tiny)
+
+table.cell(table_id=dash, column=0, row=3, text=" To ",
+           bgcolor=cFilter, text_color=cLbl, text_size=size.tiny)
+table.cell(table_id=dash, column=1, row=3, text=" " + toStr + " ",
+           bgcolor=cFilter, text_color=cGray, text_size=size.tiny)
+
+table.cell(table_id=dash, column=0, row=4, text=" Signals ",
+           bgcolor=cRow, text_color=cLbl, text_size=size.small)
+table.cell(table_id=dash, column=1, row=4, text=" " + str.tostring(sTotal) + " ",
+           bgcolor=cRow, text_color=cVal, text_size=size.small)
+
+table.cell(table_id=dash, column=0, row=5, text=" Filled ",
+           bgcolor=cRow, text_color=cLbl, text_size=size.small)
+table.cell(table_id=dash, column=1, row=5, text=" " + str.tostring(sFilled) + " ",
+           bgcolor=cRow, text_color=cYel, text_size=size.small)
+
+table.cell(table_id=dash, column=0, row=6, text=" Wins (2R) ",
+           bgcolor=cRow, text_color=cLbl, text_size=size.small)
+table.cell(table_id=dash, column=1, row=6, text=" " + str.tostring(sWins) + " ",
+           bgcolor=cRow, text_color=cGrn, text_size=size.small)
+
+table.cell(table_id=dash, column=0, row=7, text=" Losses ",
+           bgcolor=cRow, text_color=cLbl, text_size=size.small)
+table.cell(table_id=dash, column=1, row=7, text=" " + str.tostring(sLosses) + " ",
+           bgcolor=cRow, text_color=cRed, text_size=size.small)
+
+color wrBG = sWinRate >= 50.0 ? color.new(#1b5e20, 20) : color.new(#b71c1c, 20)
+table.cell(table_id=dash, column=0, row=8, text=" Win Rate ",
+           bgcolor=cRow, text_color=cLbl, text_size=size.small)
+table.cell(table_id=dash, column=1, row=8, text=" " + str.tostring(sWinRate, "#.1") + "% ",
+           bgcolor=wrBG, text_color=cVal, text_size=size.small)
+
+color netRBG = netR >= 0.0 ? color.new(#1b5e20, 20) : color.new(#b71c1c, 20)
+table.cell(table_id=dash, column=0, row=9, text=" Net R ",
+           bgcolor=cRow, text_color=cLbl, text_size=size.small)
+table.cell(table_id=dash, column=1, row=9, text=" " + str.tostring(netR, "#.0") + "R ",
+           bgcolor=netRBG, text_color=cVal, text_size=size.small)
+
+table.cell(table_id=dash, column=0, row=10, text=" Active ",
+           bgcolor=cRow, text_color=cLbl, text_size=size.small)
+table.cell(table_id=dash, column=1, row=10, text=" " + str.tostring(sActive) + " ",
+           bgcolor=color.new(#0d2a4a, 10), text_color=cBlue, text_size=size.small)
+
+color evBG = expVal >= 0.0 ? color.new(#1b5e20, 20) : color.new(#b71c1c, 20)
+table.cell(table_id=dash, column=0, row=11, text=" Exp. Value ",
+           bgcolor=cRow, text_color=cLbl, text_size=size.small)
+table.cell(table_id=dash, column=1, row=11, text=" " + str.tostring(expVal, "#.###") + "R/trade ",
+           bgcolor=evBG, text_color=cVal, text_size=size.small)
+
+// ─── LOT SIZE TABLE (middle right) ─────────────────────────────────────────────
+var table lotTbl = table.new(
+     position    = position.middle_right,
+     columns     = 3,
+     rows        = 5,
+     bgcolor     = color.new(#0d1117, 8),
+     border_color= color.new(color.gray, 55),
+     border_width= 1,
+     frame_color = color.new(color.gray, 35),
+     frame_width = 1)
+
+color cLotHdr  = color.new(#4a148c, 10)
+string dirTag  = not na(latestEntry) ? (latestIsBull ? " ▲ LONG " : " ▼ SHORT ") : ""
+string lotHdrL = " LOT SIZES" + dirTag
+table.cell(table_id=lotTbl, column=0, row=0, text=lotHdrL,
+           bgcolor=cLotHdr, text_color=cVal, text_size=size.small)
+table.cell(table_id=lotTbl, column=1, row=0, text=" RISK $ ",
+           bgcolor=cLotHdr, text_color=cYel, text_size=size.small)
+table.cell(table_id=lotTbl, column=2, row=0, text=" LOTS ",
+           bgcolor=cLotHdr, text_color=cYel, text_size=size.small)
+
+string acc1Lbl = " $" + str.tostring(acc1Size / 1000, "#") + "K " + str.tostring(acc1Risk, "#.##") + "% "
+string acc2Lbl = " $" + str.tostring(acc2Size / 1000, "#") + "K " + str.tostring(acc2Risk, "#.##") + "% "
+string acc3Lbl = " $" + str.tostring(acc3Size / 1000, "#") + "K " + str.tostring(acc3Risk, "#.##") + "% "
+
+string lot1Str = not na(lot1) ? str.tostring(lot1, "#.##") : "N/A"
+string lot2Str = not na(lot2) ? str.tostring(lot2, "#.##") : "N/A"
+string lot3Str = not na(lot3) ? str.tostring(lot3, "#.##") : "N/A"
+
+table.cell(table_id=lotTbl, column=0, row=1, text=acc1Lbl,
+           bgcolor=cRow, text_color=cLbl, text_size=size.small)
+table.cell(table_id=lotTbl, column=1, row=1, text=" $" + str.tostring(risk1Amt, "#") + " ",
+           bgcolor=cRow, text_color=cYel, text_size=size.small)
+table.cell(table_id=lotTbl, column=2, row=1, text=" " + lot1Str + " ",
+           bgcolor=cRow, text_color=cGrn, text_size=size.small)
+
+table.cell(table_id=lotTbl, column=0, row=2, text=acc2Lbl,
+           bgcolor=cRow, text_color=cLbl, text_size=size.small)
+table.cell(table_id=lotTbl, column=1, row=2, text=" $" + str.tostring(risk2Amt, "#") + " ",
+           bgcolor=cRow, text_color=cYel, text_size=size.small)
+table.cell(table_id=lotTbl, column=2, row=2, text=" " + lot2Str + " ",
+           bgcolor=cRow, text_color=cGrn, text_size=size.small)
+
+table.cell(table_id=lotTbl, column=0, row=3, text=acc3Lbl,
+           bgcolor=cRow, text_color=cLbl, text_size=size.small)
+table.cell(table_id=lotTbl, column=1, row=3, text=" $" + str.tostring(risk3Amt, "#") + " ",
+           bgcolor=cRow, text_color=cYel, text_size=size.small)
+table.cell(table_id=lotTbl, column=2, row=3, text=" " + lot3Str + " ",
+           bgcolor=cRow, text_color=cGrn, text_size=size.small)
+
+// Footer row: SL distance + auto-detected contract size label
+string slDistStr = not na(slDist) ? str.tostring(slDist, format.mintick) : "—"
+string csLabel   = _isGold ? "Gold(100oz)" : _isSilver ? "Silver(5000oz)" : _isIndex ? "Index(1ct)" : _isCrypto ? "Crypto(1)" : "Forex(100K)"
+table.cell(table_id=lotTbl, column=0, row=4, text=" SL: " + slDistStr + " ",
+           bgcolor=color.new(#111111, 5), text_color=cGray, text_size=size.tiny)
+table.cell(table_id=lotTbl, column=1, row=4, text=" " + csLabel + " ",
+           bgcolor=color.new(#111111, 5), text_color=cGray, text_size=size.tiny)
+table.cell(table_id=lotTbl, column=2, row=4, text=" auto ",
+           bgcolor=color.new(#111111, 5), text_color=csOverride > 0 ? cYel : cGrn, text_size=size.tiny)
+
+// ─── WATCHLIST TABLE (bottom right) ────────────────────────────────────────────
+var table wlTbl = table.new(
+     position    = position.bottom_right,
+     columns     = 2,
+     rows        = 5,
+     bgcolor     = color.new(#0d1117, 8),
+     border_color= color.new(color.gray, 55),
+     border_width= 1,
+     frame_color = color.new(color.gray, 35),
+     frame_width = 1)
+
+color cWlHdr = color.new(#006064, 10)
+table.cell(table_id=wlTbl, column=0, row=0, text=" WATCHLIST ",
+           bgcolor=cWlHdr, text_color=cVal, text_size=size.small)
+table.cell(table_id=wlTbl, column=1, row=0, text=" SIGNAL (live) ",
+           bgcolor=cWlHdr, text_color=cYel, text_size=size.small)
+
+table.cell(table_id=wlTbl, column=0, row=1, text=" " + f_stripExch(pair1Sym) + " ",
+           bgcolor=cRow, text_color=cLbl, text_size=size.small)
+table.cell(table_id=wlTbl, column=1, row=1, text=f_sigText(p1sig),
+           bgcolor=f_sigBG(p1sig), text_color=f_sigFG(p1sig), text_size=size.small)
+
+table.cell(table_id=wlTbl, column=0, row=2, text=" " + f_stripExch(pair2Sym) + " ",
+           bgcolor=cRow, text_color=cLbl, text_size=size.small)
+table.cell(table_id=wlTbl, column=1, row=2, text=f_sigText(p2sig),
+           bgcolor=f_sigBG(p2sig), text_color=f_sigFG(p2sig), text_size=size.small)
+
+table.cell(table_id=wlTbl, column=0, row=3, text=" " + f_stripExch(pair3Sym) + " ",
+           bgcolor=cRow, text_color=cLbl, text_size=size.small)
+table.cell(table_id=wlTbl, column=1, row=3, text=f_sigText(p3sig),
+           bgcolor=f_sigBG(p3sig), text_color=f_sigFG(p3sig), text_size=size.small)
+
+table.cell(table_id=wlTbl, column=0, row=4, text=" " + f_stripExch(pair4Sym) + " ",
+           bgcolor=cRow, text_color=cLbl, text_size=size.small)
+table.cell(table_id=wlTbl, column=1, row=4, text=f_sigText(p4sig),
+           bgcolor=f_sigBG(p4sig), text_color=f_sigFG(p4sig), text_size=size.small)
+
+// ─── ALERTS ────────────────────────────────────────────────────────────────────
+alertcondition(condition=strongBull,           title="EBP — Strong Bullish",  message="Strong Bull EBP | Limit 25% | SL 75%")
+alertcondition(condition=weakBull,             title="EBP — Weak Bullish",    message="Weak Bull EBP | Limit 50% | SL 100%")
+alertcondition(condition=strongBear,           title="EBP — Strong Bearish",  message="Strong Bear EBP | Limit 25% | SL 75%")
+alertcondition(condition=weakBear,             title="EBP — Weak Bearish",    message="Weak Bear EBP | Limit 50% | SL 100%")
+alertcondition(condition=bullEBP or bearEBP,   title="EBP — Any Signal",      message="EBP Signal Detected")
+alertcondition(condition=beLong or beShort,    title="EBP — Move SL to BE",   message="EBP: New HH/LL formed — Move Stop Loss to Breakeven now")
