@@ -28,10 +28,10 @@ acc3Risk     = input.float(defval=0.50,     title="Account 3 Risk %",           
 csOverride   = input.float(defval=0.0,      title="Contract Size Override (0=auto)",group="Lot Calculator", minval=0,
                            tooltip="0 = auto-detect per instrument. Override: 100000=forex | 100=Gold/Silver | 1=indices/crypto")
 
-pair1Sym = input.symbol(defval="FX:GBPCAD", title="Watchlist Pair 1", group="Watchlist")
-pair2Sym = input.symbol(defval="FX:AUDCHF", title="Watchlist Pair 2", group="Watchlist")
-pair3Sym = input.symbol(defval="FX:EURUSD", title="Watchlist Pair 3", group="Watchlist")
-pair4Sym = input.symbol(defval="FX:NZDJPY", title="Watchlist Pair 4", group="Watchlist")
+pair1Sym = input.symbol(defval="FX:GBPCAD",  title="Watchlist Pair 1", group="Watchlist")
+pair2Sym = input.symbol(defval="TVC:GOLD",   title="Watchlist Pair 2", group="Watchlist")
+pair3Sym = input.symbol(defval="FX:EURUSD",  title="Watchlist Pair 3", group="Watchlist")
+pair4Sym = input.symbol(defval="FX:GBPUSD",  title="Watchlist Pair 4", group="Watchlist")
 
 cBullS = input.color(defval=#00e676, title="Strong Bullish", group="Colors")
 cBullW = input.color(defval=#69f0ae, title="Weak Bullish",   group="Colors")
