@@ -27,6 +27,8 @@ acc3Size     = input.float(defval=10000.0,  title="Account 3 Balance ($)",      
 acc3Risk     = input.float(defval=0.50,     title="Account 3 Risk %",               group="Lot Calculator", minval=0.01, maxval=10, step=0.05)
 csOverride   = input.float(defval=0.0,      title="Contract Size Override (0=auto)",group="Lot Calculator", minval=0,
                            tooltip="0 = auto-detect per instrument. Override: 100000=forex | 100=Gold/Silver | 1=indices/crypto")
+accAssign    = input.int(  defval=1,        title="Alert Account (1/2/3)",          group="Lot Calculator", minval=1, maxval=3,
+                           tooltip="Which account's lot size to show in WhatsApp alerts. Set per chart: XAUUSD=1 ($100K), GBPCAD=2 ($25K), EURUSD=3 ($10K)")
 
 pair1Sym = input.symbol(defval="FX:GBPCAD",  title="Watchlist Pair 1", group="Watchlist")
 pair2Sym = input.symbol(defval="TVC:GOLD",   title="Watchlist Pair 2", group="Watchlist")
@@ -150,7 +152,6 @@ if newSignalConfirmed
 
     // ── Dynamic alert with prices + lot sizes ──────────────────────────────────
     string dirWord = isBull ? "BUY" : "SELL"
-    // Compute lot sizes inline for the alert message
     float _slDist  = math.abs(entryLvl - slLvl)
     float _rpl     = _slDist > 0 ? _slDist * contractSize * syminfo.pointvalue : na
     float _lot1    = not na(_rpl) ? (acc1Size * acc1Risk / 100.0) / _rpl : na
@@ -162,14 +163,21 @@ if newSignalConfirmed
     string _r1 = "$" + str.tostring(acc1Size * acc1Risk / 100.0, "#")
     string _r2 = "$" + str.tostring(acc2Size * acc2Risk / 100.0, "#")
     string _r3 = "$" + str.tostring(acc3Size * acc3Risk / 100.0, "#")
+    // Mark which account this chart is assigned to
+    string _a1tag = accAssign == 1 ? " ★ YOUR ACCOUNT" : ""
+    string _a2tag = accAssign == 2 ? " ★ YOUR ACCOUNT" : ""
+    string _a3tag = accAssign == 3 ? " ★ YOUR ACCOUNT" : ""
+    string _accK  = accAssign == 1 ? str.tostring(acc1Size / 1000, "#") + "K" :
+                    accAssign == 2 ? str.tostring(acc2Size / 1000, "#") + "K" :
+                                     str.tostring(acc3Size / 1000, "#") + "K"
     string alertMsg =
-         syminfo.ticker + " " + dirWord + "\n\n" +
+         syminfo.ticker + " " + dirWord + " [Acc " + str.tostring(accAssign) + " — $" + _accK + "]\n\n" +
          "ENTRY: " + str.tostring(entryLvl, format.mintick) + "\n" +
          "TP: "    + str.tostring(tpLvl,    format.mintick) + "\n" +
          "SL: "    + str.tostring(slLvl,    format.mintick) + "\n\n" +
-         "$" + str.tostring(acc1Size / 1000, "#") + "K LOT SIZE: " + _l1 + " (" + _r1 + " risk)\n" +
-         "$" + str.tostring(acc2Size / 1000, "#") + "K LOT SIZE: " + _l2 + " (" + _r2 + " risk)\n" +
-         "$" + str.tostring(acc3Size / 1000, "#") + "K LOT SIZE: " + _l3 + " (" + _r3 + " risk)"
+         "$" + str.tostring(acc1Size / 1000, "#") + "K LOT SIZE: " + _l1 + " (" + _r1 + " risk)" + _a1tag + "\n" +
+         "$" + str.tostring(acc2Size / 1000, "#") + "K LOT SIZE: " + _l2 + " (" + _r2 + " risk)" + _a2tag + "\n" +
+         "$" + str.tostring(acc3Size / 1000, "#") + "K LOT SIZE: " + _l3 + " (" + _r3 + " risk)" + _a3tag
     alert(alertMsg, alert.freq_once_per_bar)
 
     if showLevels
@@ -288,7 +296,7 @@ if showBE and beLong
               text=" ⚡ MOVE SL TO BE ",
               color=color.new(#ff9800, 0), textcolor=color.white,
               style=label.style_label_up, size=size.normal)
-    alert("⚡ MOVE SL TO BREAKEVEN\n" +
+    alert("⚡ MOVE SL TO BREAKEVEN [Acc " + str.tostring(accAssign) + "]\n" +
           syminfo.ticker + " BUY — " + timeframe.period + "\n\n" +
           "New Higher High formed.\n" +
           "Move your Stop Loss to: " + str.tostring(latestEntry, format.mintick) + " (entry price)\n" +
@@ -300,7 +308,7 @@ if showBE and beShort
               text=" ⚡ MOVE SL TO BE ",
               color=color.new(#ff9800, 0), textcolor=color.white,
               style=label.style_label_down, size=size.normal)
-    alert("⚡ MOVE SL TO BREAKEVEN\n" +
+    alert("⚡ MOVE SL TO BREAKEVEN [Acc " + str.tostring(accAssign) + "]\n" +
           syminfo.ticker + " SELL — " + timeframe.period + "\n\n" +
           "New Lower Low formed.\n" +
           "Move your Stop Loss to: " + str.tostring(latestEntry, format.mintick) + " (entry price)\n" +
@@ -330,7 +338,7 @@ if watchPend
 
     if entryHit
         pendFired := true
-        alert("✅ ENTRY ZONE HIT — " + syminfo.ticker + " " + _dir + "\n\n" +
+        alert("✅ ENTRY ZONE HIT [Acc " + str.tostring(accAssign) + "] — " + syminfo.ticker + " " + _dir + "\n\n" +
               "Price reached entry: " + str.tostring(latestEntry, format.mintick) + "\n" +
               "Check your limit order — should be filled now.\n" +
               "TP: " + str.tostring(latestTP, format.mintick) +
@@ -338,7 +346,7 @@ if watchPend
               alert.freq_once_per_bar)
     else if oneRHit
         pendInvld := true
-        alert("❌ TRADE INVALIDATED — " + syminfo.ticker + " " + _dir + "\n\n" +
+        alert("❌ TRADE INVALIDATED [Acc " + str.tostring(accAssign) + "] — " + syminfo.ticker + " " + _dir + "\n\n" +
               "Price moved 1R+ without filling entry.\n" +
               "Cancel your limit order at: " + str.tostring(latestEntry, format.mintick) + "\n" +
               "The move already happened without you.",
