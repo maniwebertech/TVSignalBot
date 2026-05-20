@@ -20,20 +20,19 @@ lookbackDays = input.int( defval=30,   title="Lookback Days",        group="Back
                           tooltip="Stats cover only the last N days. Disable filter for all-time stats.")
 
 acc1Size     = input.float(defval=100000.0, title="Account 1 Balance ($)",          group="Lot Calculator", minval=100, step=1000)
-acc1Risk     = input.float(defval=1.0,      title="Account 1 Risk %",               group="Lot Calculator", minval=0.01, maxval=10, step=0.05)
+acc1RiskUSD  = input.float(defval=1000.0,   title="Account 1 Risk per trade ($)",   group="Lot Calculator", minval=1, step=50)
 acc2Size     = input.float(defval=25000.0,  title="Account 2 Balance ($)",          group="Lot Calculator", minval=100, step=1000)
-acc2Risk     = input.float(defval=0.50,     title="Account 2 Risk %",               group="Lot Calculator", minval=0.01, maxval=10, step=0.05)
+acc2RiskUSD  = input.float(defval=100.0,    title="Account 2 Risk per trade ($)",   group="Lot Calculator", minval=1, step=10)
 acc3Size     = input.float(defval=10000.0,  title="Account 3 Balance ($)",          group="Lot Calculator", minval=100, step=1000)
-acc3Risk     = input.float(defval=0.50,     title="Account 3 Risk %",               group="Lot Calculator", minval=0.01, maxval=10, step=0.05)
+acc3RiskUSD  = input.float(defval=50.0,     title="Account 3 Risk per trade ($)",   group="Lot Calculator", minval=1, step=5)
 csOverride   = input.float(defval=0.0,      title="Contract Size Override (0=auto)",group="Lot Calculator", minval=0,
                            tooltip="0 = auto-detect per instrument. Override: 100000=forex | 100=Gold/Silver | 1=indices/crypto")
 accAssign    = input.int(  defval=1,        title="Alert Account (1/2/3)",          group="Lot Calculator", minval=1, maxval=3,
-                           tooltip="Which account's lot size to show in WhatsApp alerts. Set per chart: XAUUSD=1 ($100K), GBPCAD=2 ($25K), EURUSD=3 ($10K)")
+                           tooltip="Which account's lot size to show in WhatsApp alerts. Set per chart: XAUUSD=1 ($100K/$1000 risk), GBPCAD=2 ($25K/$100 risk), EURUSD=3 ($10K/$50 risk)")
 
 pair1Sym = input.symbol(defval="FX:GBPCAD",  title="Watchlist Pair 1", group="Watchlist")
 pair2Sym = input.symbol(defval="TVC:GOLD",   title="Watchlist Pair 2", group="Watchlist")
 pair3Sym = input.symbol(defval="FX:EURUSD",  title="Watchlist Pair 3", group="Watchlist")
-pair4Sym = input.symbol(defval="FX:GBPUSD",  title="Watchlist Pair 4", group="Watchlist")
 
 cBullS = input.color(defval=#00e676, title="Strong Bullish", group="Colors")
 cBullW = input.color(defval=#69f0ae, title="Weak Bullish",   group="Colors")
@@ -154,24 +153,22 @@ if newSignalConfirmed
     string dirWord = isBull ? "BUY" : "SELL"
     float _slDist  = math.abs(entryLvl - slLvl)
     float _rpl     = _slDist > 0 ? _slDist * contractSize * syminfo.pointvalue : na
-    float _lot1    = not na(_rpl) ? (acc1Size * acc1Risk / 100.0) / _rpl : na
-    float _lot2    = not na(_rpl) ? (acc2Size * acc2Risk / 100.0) / _rpl : na
-    float _lot3    = not na(_rpl) ? (acc3Size * acc3Risk / 100.0) / _rpl : na
+    float _lot1    = not na(_rpl) ? acc1RiskUSD / _rpl : na
+    float _lot2    = not na(_rpl) ? acc2RiskUSD / _rpl : na
+    float _lot3    = not na(_rpl) ? acc3RiskUSD / _rpl : na
     string _l1 = not na(_lot1) ? str.tostring(_lot1, "#.##") + " lots" : "N/A"
     string _l2 = not na(_lot2) ? str.tostring(_lot2, "#.##") + " lots" : "N/A"
     string _l3 = not na(_lot3) ? str.tostring(_lot3, "#.##") + " lots" : "N/A"
-    string _r1 = "$" + str.tostring(acc1Size * acc1Risk / 100.0, "#")
-    string _r2 = "$" + str.tostring(acc2Size * acc2Risk / 100.0, "#")
-    string _r3 = "$" + str.tostring(acc3Size * acc3Risk / 100.0, "#")
+    string _r1 = "$" + str.tostring(acc1RiskUSD, "#")
+    string _r2 = "$" + str.tostring(acc2RiskUSD, "#")
+    string _r3 = "$" + str.tostring(acc3RiskUSD, "#")
     // Mark which account this chart is assigned to
-    string _a1tag = accAssign == 1 ? " ★ YOUR ACCOUNT" : ""
-    string _a2tag = accAssign == 2 ? " ★ YOUR ACCOUNT" : ""
-    string _a3tag = accAssign == 3 ? " ★ YOUR ACCOUNT" : ""
-    string _accK  = accAssign == 1 ? str.tostring(acc1Size / 1000, "#") + "K" :
-                    accAssign == 2 ? str.tostring(acc2Size / 1000, "#") + "K" :
-                                     str.tostring(acc3Size / 1000, "#") + "K"
+    string _a1tag = accAssign == 1 ? " << YOUR ACCOUNT" : ""
+    string _a2tag = accAssign == 2 ? " << YOUR ACCOUNT" : ""
+    string _a3tag = accAssign == 3 ? " << YOUR ACCOUNT" : ""
+    string _accK  = accAssign == 1 ? str.tostring(acc1Size / 1000, "#") + "K" : accAssign == 2 ? str.tostring(acc2Size / 1000, "#") + "K" : str.tostring(acc3Size / 1000, "#") + "K"
     string alertMsg =
-         syminfo.ticker + " " + dirWord + " [Acc " + str.tostring(accAssign) + " — $" + _accK + "]\n\n" +
+         syminfo.ticker + " " + dirWord + " [Acc " + str.tostring(accAssign) + " - $" + _accK + "]\n\n" +
          "ENTRY: " + str.tostring(entryLvl, format.mintick) + "\n" +
          "TP: "    + str.tostring(tpLvl,    format.mintick) + "\n" +
          "SL: "    + str.tostring(slLvl,    format.mintick) + "\n\n" +
@@ -297,7 +294,7 @@ if showBE and beLong
               color=color.new(#ff9800, 0), textcolor=color.white,
               style=label.style_label_up, size=size.normal)
     alert("⚡ MOVE SL TO BREAKEVEN [Acc " + str.tostring(accAssign) + "]\n" +
-          syminfo.ticker + " BUY — " + timeframe.period + "\n\n" +
+          syminfo.ticker + " BUY - " + timeframe.period + "\n\n" +
           "New Higher High formed.\n" +
           "Move your Stop Loss to: " + str.tostring(latestEntry, format.mintick) + " (entry price)\n" +
           "Your trade is now risk-free.", alert.freq_once_per_bar)
@@ -309,7 +306,7 @@ if showBE and beShort
               color=color.new(#ff9800, 0), textcolor=color.white,
               style=label.style_label_down, size=size.normal)
     alert("⚡ MOVE SL TO BREAKEVEN [Acc " + str.tostring(accAssign) + "]\n" +
-          syminfo.ticker + " SELL — " + timeframe.period + "\n\n" +
+          syminfo.ticker + " SELL - " + timeframe.period + "\n\n" +
           "New Lower Low formed.\n" +
           "Move your Stop Loss to: " + str.tostring(latestEntry, format.mintick) + " (entry price)\n" +
           "Your trade is now risk-free.", alert.freq_once_per_bar)
@@ -320,15 +317,21 @@ if showBE and beShort
 // Resets on every new confirmed signal so it always tracks the latest trade
 var bool pendFired  = false
 var bool pendInvld  = false
+var bool pendTP     = false
+var bool pendSL     = false
 var int  pendSrcBar = -1
 
 if newSignalConfirmed
     pendFired  := false
     pendInvld  := false
+    pendTP     := false
+    pendSL     := false
     pendSrcBar := bar_index
 
 bool watchPend = not na(latestEntry) and pendSrcBar >= 0 and
                  bar_index > pendSrcBar and not pendFired and not pendInvld
+
+bool watchActive = not na(latestEntry) and pendFired and not pendTP and not pendSL
 
 if watchPend
     bool   entryHit  = latestIsBull ? low  <= latestEntry : high >= latestEntry
@@ -338,18 +341,37 @@ if watchPend
 
     if entryHit
         pendFired := true
-        alert("✅ ENTRY ZONE HIT [Acc " + str.tostring(accAssign) + "] — " + syminfo.ticker + " " + _dir + "\n\n" +
+        alert("✅ ENTRY ZONE HIT [Acc " + str.tostring(accAssign) + "] - " + syminfo.ticker + " " + _dir + "\n\n" +
               "Price reached entry: " + str.tostring(latestEntry, format.mintick) + "\n" +
-              "Check your limit order — should be filled now.\n" +
+              "Check your limit order - should be filled now.\n" +
               "TP: " + str.tostring(latestTP, format.mintick) +
               " | SL: " + str.tostring(latestSL, format.mintick),
               alert.freq_once_per_bar)
     else if oneRHit
         pendInvld := true
-        alert("❌ TRADE INVALIDATED [Acc " + str.tostring(accAssign) + "] — " + syminfo.ticker + " " + _dir + "\n\n" +
+        alert("❌ TRADE INVALIDATED [Acc " + str.tostring(accAssign) + "] - " + syminfo.ticker + " " + _dir + "\n\n" +
               "Price moved 1R+ without filling entry.\n" +
               "Cancel your limit order at: " + str.tostring(latestEntry, format.mintick) + "\n" +
               "The move already happened without you.",
+              alert.freq_once_per_bar)
+
+if watchActive
+    string _dA       = latestIsBull ? "BUY" : "SELL"
+    float  _riskA    = accAssign == 1 ? acc1RiskUSD : accAssign == 2 ? acc2RiskUSD : acc3RiskUSD
+    bool   tpReached = latestIsBull ? high >= latestTP : low  <= latestTP
+    bool   slReached = latestIsBull ? low  <= latestSL : high >= latestSL
+
+    if tpReached
+        pendTP := true
+        alert("✅ TP HIT [Acc " + str.tostring(accAssign) + "] - " + syminfo.ticker + " " + _dA + "\n\n" +
+              "Take Profit reached: " + str.tostring(latestTP, format.mintick) + "\n" +
+              "+2R | $" + str.tostring(_riskA * 2.0, "#") + " profit",
+              alert.freq_once_per_bar)
+    else if slReached
+        pendSL := true
+        alert("❌ SL HIT [Acc " + str.tostring(accAssign) + "] - " + syminfo.ticker + " " + _dA + "\n\n" +
+              "Stop Loss hit: " + str.tostring(latestSL, format.mintick) + "\n" +
+              "-1R | $" + str.tostring(_riskA, "#") + " loss",
               alert.freq_once_per_bar)
 
 // ─── DATE FILTER ───────────────────────────────────────────────────────────────
@@ -390,12 +412,12 @@ float expVal    = sResolved > 0 ? (sWinRate / 100.0) * 2.0 - (1.0 - sWinRate / 1
 // lot = risk_amount / riskPerLot
 float slDist     = not na(latestEntry) and not na(latestSL) ? math.abs(latestEntry - latestSL) : na
 float riskPerLot = not na(slDist) and slDist > 0 ? slDist * contractSize * syminfo.pointvalue : na
-float lot1       = not na(riskPerLot) ? (acc1Size * acc1Risk / 100.0) / riskPerLot : na
-float lot2       = not na(riskPerLot) ? (acc2Size * acc2Risk / 100.0) / riskPerLot : na
-float lot3       = not na(riskPerLot) ? (acc3Size * acc3Risk / 100.0) / riskPerLot : na
-float risk1Amt   = acc1Size * acc1Risk / 100.0
-float risk2Amt   = acc2Size * acc2Risk / 100.0
-float risk3Amt   = acc3Size * acc3Risk / 100.0
+float lot1       = not na(riskPerLot) ? acc1RiskUSD / riskPerLot : na
+float lot2       = not na(riskPerLot) ? acc2RiskUSD / riskPerLot : na
+float lot3       = not na(riskPerLot) ? acc3RiskUSD / riskPerLot : na
+float risk1Amt   = acc1RiskUSD
+float risk2Amt   = acc2RiskUSD
+float risk3Amt   = acc3RiskUSD
 
 // ─── MULTI-PAIR EBP SIGNALS ────────────────────────────────────────────────────
 // Returns 0=no signal, 1=bull EBP, 2=bear EBP on the current bar for each pair
@@ -407,7 +429,6 @@ f_ebpState(sym) =>
 int p1sig = f_ebpState(pair1Sym)
 int p2sig = f_ebpState(pair2Sym)
 int p3sig = f_ebpState(pair3Sym)
-int p4sig = f_ebpState(pair4Sym)
 
 // Helper to strip exchange prefix: "FX:GBPCAD" → "GBPCAD"
 f_stripExch(sym) =>
@@ -531,9 +552,9 @@ table.cell(table_id=lotTbl, column=1, row=0, text=" RISK $ ",
 table.cell(table_id=lotTbl, column=2, row=0, text=" LOTS ",
            bgcolor=cLotHdr, text_color=cYel, text_size=size.small)
 
-string acc1Lbl = " $" + str.tostring(acc1Size / 1000, "#") + "K " + str.tostring(acc1Risk, "#.##") + "% "
-string acc2Lbl = " $" + str.tostring(acc2Size / 1000, "#") + "K " + str.tostring(acc2Risk, "#.##") + "% "
-string acc3Lbl = " $" + str.tostring(acc3Size / 1000, "#") + "K " + str.tostring(acc3Risk, "#.##") + "% "
+string acc1Lbl = " $" + str.tostring(acc1Size / 1000, "#") + "K ($" + str.tostring(acc1RiskUSD, "#") + " risk) "
+string acc2Lbl = " $" + str.tostring(acc2Size / 1000, "#") + "K ($" + str.tostring(acc2RiskUSD, "#") + " risk) "
+string acc3Lbl = " $" + str.tostring(acc3Size / 1000, "#") + "K ($" + str.tostring(acc3RiskUSD, "#") + " risk) "
 
 string lot1Str = not na(lot1) ? str.tostring(lot1, "#.##") : "N/A"
 string lot2Str = not na(lot2) ? str.tostring(lot2, "#.##") : "N/A"
@@ -574,7 +595,7 @@ table.cell(table_id=lotTbl, column=2, row=4, text=" auto ",
 var table wlTbl = table.new(
      position    = position.bottom_right,
      columns     = 2,
-     rows        = 5,
+     rows        = 4,
      bgcolor     = color.new(#0d1117, 8),
      border_color= color.new(color.gray, 55),
      border_width= 1,
@@ -601,11 +622,6 @@ table.cell(table_id=wlTbl, column=0, row=3, text=" " + f_stripExch(pair3Sym) + "
            bgcolor=cRow, text_color=cLbl, text_size=size.small)
 table.cell(table_id=wlTbl, column=1, row=3, text=f_sigText(p3sig),
            bgcolor=f_sigBG(p3sig), text_color=f_sigFG(p3sig), text_size=size.small)
-
-table.cell(table_id=wlTbl, column=0, row=4, text=" " + f_stripExch(pair4Sym) + " ",
-           bgcolor=cRow, text_color=cLbl, text_size=size.small)
-table.cell(table_id=wlTbl, column=1, row=4, text=f_sigText(p4sig),
-           bgcolor=f_sigBG(p4sig), text_color=f_sigFG(p4sig), text_size=size.small)
 
 // ─── ALERTS ────────────────────────────────────────────────────────────────────
 alertcondition(condition=strongBull,           title="EBP — Strong Bullish",  message="Strong Bull EBP | Limit 25% | SL 75%")
