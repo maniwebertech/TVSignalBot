@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EBP Trading Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:      #0d1117;
+    --card:    #161b22;
+    --card2:   #1c2128;
+    --border:  #30363d;
+    --text:    #c9d1d9;
+    --muted:   #8b949e;
+    --green:   #3fb950;
+    --red:     #f85149;
+    --blue:    #58a6ff;
+    --yellow:  #d29922;
+    --orange:  #e3b341;
+    --purple:  #bc8cff;
+    --cyan:    #79c0ff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; }
+  a { color: var(--blue); }
+
+  /* ── LAYOUT ── */
+  .app { max-width: 1400px; margin: 0 auto; padding: 16px; }
+
+  /* ── HEADER ── */
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .header h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+  .header-meta { display: flex; align-items: center; gap: 12px; }
+  .last-updated { color: var(--muted); font-size: 11px; }
+
+  /* ── FILTERS ── */
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; align-items: center; }
+  .filters select, .filters input[type=text] {
+    background: var(--card); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;
+  }
+  .filters select:focus { outline: none; border-color: var(--blue); }
+  .filter-label { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .filter-label input { cursor: pointer; accent-color: var(--blue); }
+
+  /* ── STATS ROW ── */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .stat-label { color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 6px; }
+  .stat-value { font-size: 22px; font-weight: 700; line-height: 1; }
+  .stat-sub { color: var(--muted); font-size: 10px; margin-top: 4px; }
+
+  /* ── CHARTS ── */
+  .charts { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .chart-title { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 12px; }
+  @media (max-width: 768px) { .charts { grid-template-columns: 1fr; } }
+
+  /* ── ACCOUNT CHARTS ── */
+  .acc-charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+  @media (max-width: 900px) { .acc-charts { grid-template-columns: 1fr; } }
+
+  /* ── TRADE LOG ── */
+  .trade-log { background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .table-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .table-header h3 { font-size: 13px; font-weight: 600; }
+  .table-count { color: var(--muted); font-size: 12px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: var(--card2); color: var(--muted); font-weight: 600; padding: 8px 10px; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--border); letter-spacing: 0.3px; text-transform: uppercase; font-size: 10px; }
+  td { padding: 7px 10px; border-bottom: 1px solid #21262d; white-space: nowrap; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--card2); }
+  tr.excluded td { opacity: 0.4; }
+  .empty, .loading { text-align: center; color: var(--muted); padding: 32px; }
+
+  /* ── BADGES ── */
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; }
+
+  /* ── BUTTONS ── */
+  .btn { background: var(--card2); border: 1px solid var(--border); color: var(--text); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: background 0.15s; }
+  .btn:hover { background: #2d333b; }
+  .btn-sm { padding: 3px 8px; font-size: 10px; border-radius: 4px; border: 1px solid var(--border); cursor: pointer; font-weight: 600; background: transparent; }
+  .btn-not-taken { color: var(--orange); border-color: #e3b34133; }
+  .btn-not-taken:hover { background: #e3b34122; }
+  .btn-include { color: var(--green); border-color: #3fb95033; }
+  .btn-include:hover { background: #3fb95022; }
+  .btn-notes { color: var(--blue); border-color: #58a6ff33; }
+  .btn-notes:hover { background: #58a6ff22; }
+  .actions { display: flex; gap: 4px; }
+
+  /* ── MISC ── */
+  .pair-cell { font-weight: 600; font-family: monospace; font-size: 12px; }
+  .dir-buy  { color: var(--green); font-weight: 700; }
+  .dir-sell { color: var(--red);   font-weight: 700; }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+  .muted { color: var(--muted); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- HEADER -->
+  <div class="header">
+    <h1>⚡ EBP Trading Dashboard</h1>
+    <div class="header-meta">
+      <span class="last-updated" id="lastUpdated">Loading…</span>
+      <button class="btn" onclick="loadData()">⟳ Refresh</button>
+    </div>
+  </div>
+
+  <!-- FILTERS -->
+  <div class="filters">
+    <select id="fPair" onchange="loadData()">
+      <option value="all">All Pairs</option>
+      <option value="GBPCAD">GBPCAD</option>
+      <option value="XAUUSD">GOLD (XAUUSD)</option>
+      <option value="EURUSD">EURUSD</option>
+      <option value="GBPUSD">GBPUSD</option>
+      <option value="AUDCHF">AUDCHF</option>
+      <option value="NZDJPY">NZDJPY</option>
+    </select>
+    <select id="fAccount" onchange="loadData()">
+      <option value="all">All Accounts</option>
+      <option value="1">Acc 1 — $100K</option>
+      <option value="2">Acc 2 — $25K</option>
+      <option value="3">Acc 3 — $10K</option>
+    </select>
+    <select id="fDays" onchange="loadData()">
+      <option value="">All Time</option>
+      <option value="7">Last 7 Days</option>
+      <option value="30" selected>Last 30 Days</option>
+      <option value="90">Last 90 Days</option>
+      <option value="365">Last Year</option>
+    </select>
+    <select id="fStatus" onchange="loadData()">
+      <option value="all">All Statuses</option>
+      <option value="PENDING">Pending</option>
+      <option value="FILLED">Filled (Active)</option>
+      <option value="BE_ACTIVE">Break-Even Active</option>
+      <option value="WIN">Win</option>
+      <option value="LOSS">Loss</option>
+      <option value="INVALIDATED">Invalidated</option>
+      <option value="NOT_TAKEN">Not Taken</option>
+    </select>
+    <label class="filter-label">
+      <input type="checkbox" id="fHideExcluded" onchange="renderAll()"> Hide Not Taken
+    </label>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-label">Signals</div>
+      <div class="stat-value" id="sSignals">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Fill Rate</div>
+      <div class="stat-value" id="sFillRate">—</div>
+      <div class="stat-sub" id="sFillSub"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Win Rate</div>
+      <div class="stat-value" id="sWinRate">—</div>
+      <div class="stat-sub" id="sWRSub"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Net R</div>
+      <div class="stat-value" id="sNetR">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total P&amp;L</div>
+      <div class="stat-value" id="sPnL">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Exp. Value</div>
+      <div class="stat-value" id="sEV">—</div>
+      <div class="stat-sub">per trade</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Active</div>
+      <div class="stat-value" id="sActive">—</div>
+      <div class="stat-sub" id="sActiveSub"></div>
+    </div>
+  </div>
+
+  <!-- CHARTS ROW 1: Equity + Pair Stats -->
+  <div class="charts">
+    <div class="chart-card">
+      <div class="chart-title">Cumulative R (Equity Curve)</div>
+      <canvas id="equityChart" height="160"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Win Rate by Pair</div>
+      <canvas id="pairChart" height="160"></canvas>
+    </div>
+  </div>
+
+  <!-- CHARTS ROW 2: Per Account -->
+  <div class="acc-charts">
+    <div class="chart-card">
+      <div class="chart-title">Account 1 — $100K</div>
+      <canvas id="acc1Chart" height="130"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Account 2 — $25K</div>
+      <canvas id="acc2Chart" height="130"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Account 3 — $10K</div>
+      <canvas id="acc3Chart" height="130"></canvas>
+    </div>
+  </div>
+
+  <!-- TRADE LOG -->
+  <div class="trade-log">
+    <div class="table-header">
+      <h3>Trade Log</h3>
+      <span class="table-count" id="tableCount"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Pair</th>
+            <th>Dir</th>
+            <th>Acc</th>
+            <th>Entry</th>
+            <th>SL</th>
+            <th>TP</th>
+            <th>Lots</th>
+            <th>Risk $</th>
+            <th>Status</th>
+            <th>P&amp;L R</th>
+            <th>P&amp;L $</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tradesBody">
+          <tr><td colspan="13" class="loading">Loading trades…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let allTrades = []
+let charts = {}
+
+const STATUS_CFG = {
+  PENDING:     { label: 'PENDING',     bg: '#d2992222', color: '#d29922', border: '#d2992244' },
+  FILLED:      { label: 'FILLED',      bg: '#58a6ff22', color: '#58a6ff', border: '#58a6ff44' },
+  BE_ACTIVE:   { label: 'BE ACTIVE',   bg: '#79c0ff22', color: '#79c0ff', border: '#79c0ff44' },
+  WIN:         { label: 'WIN',         bg: '#3fb95022', color: '#3fb950', border: '#3fb95044' },
+  LOSS:        { label: 'LOSS',        bg: '#f8514922', color: '#f85149', border: '#f8514944' },
+  INVALIDATED: { label: 'INVALIDATED', bg: '#e3b34122', color: '#e3b341', border: '#e3b34144' },
+  NOT_TAKEN:   { label: 'NOT TAKEN',   bg: '#8b949e22', color: '#8b949e', border: '#8b949e44' }
+}
+
+// ── Load data ────────────────────────────────────────────────────────────────
+async function loadData() {
+  try {
+    const params = new URLSearchParams()
+    const pair    = document.getElementById('fPair').value
+    const account = document.getElementById('fAccount').value
+    const days    = document.getElementById('fDays').value
+    const status  = document.getElementById('fStatus').value
+    if (pair    !== 'all') params.set('pair', pair)
+    if (account !== 'all') params.set('account', account)
+    if (days)              params.set('days', days)
+    if (status  !== 'all') params.set('status', status)
+
+    const res = await fetch('/api/trades-data?' + params)
+    if (!res.ok) throw new Error(await res.text())
+    const data = await res.json()
+    allTrades = data.trades || []
+
+    renderAll()
+    document.getElementById('lastUpdated').textContent =
+      'Updated ' + new Date().toLocaleTimeString()
+  } catch (err) {
+    console.error('Load error:', err)
+    document.getElementById('lastUpdated').textContent = 'Error: ' + err.message
+  }
+}
+
+// ── Apply hide-excluded filter ────────────────────────────────────────────────
+function visibleTrades() {
+  const hide = document.getElementById('fHideExcluded').checked
+  return hide ? allTrades.filter(t => !t.manually_excluded) : allTrades
+}
+
+// ── Render all sections ───────────────────────────────────────────────────────
+function renderAll() {
+  const trades = visibleTrades()
+  renderStats(trades)
+  renderCharts(trades)
+  renderTable(trades)
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+function renderStats(trades) {
+  const total    = trades.length
+  const filled   = trades.filter(t => ['FILLED','WIN','LOSS','BE_ACTIVE'].includes(t.status)).length
+  const resolved = trades.filter(t => ['WIN','LOSS'].includes(t.status))
+  const wins     = resolved.filter(t => t.status === 'WIN').length
+  const losses   = resolved.filter(t => t.status === 'LOSS').length
+  const active   = trades.filter(t => ['FILLED','BE_ACTIVE'].includes(t.status)).length
+  const pending  = trades.filter(t => t.status === 'PENDING').length
+  const netR     = wins * 2 - losses
+  const totalPnL = trades.reduce((s, t) => s + (t.pnl_usd || 0), 0)
+  const fillPct  = total > 0 ? (filled / total * 100).toFixed(1) : '0.0'
+  const winPct   = resolved.length > 0 ? (wins / resolved.length * 100).toFixed(1) : '0.0'
+  const ev       = resolved.length > 0
+    ? ((wins/resolved.length)*2 - (losses/resolved.length)*1).toFixed(3) : '0.000'
+
+  set('sSignals',  total)
+  set('sFillRate', fillPct + '%')
+  set('sFillSub',  filled + ' filled')
+  set('sWinRate',  winPct + '%')
+  set('sWRSub',    wins + 'W / ' + losses + 'L')
+  colorSet('sNetR',  (netR >= 0 ? '+' : '') + netR + 'R', netR)
+  colorSet('sPnL',   (totalPnL >= 0 ? '+' : '') + '$' + Math.abs(totalPnL).toFixed(0), totalPnL)
+  colorSet('sEV',    (ev > 0 ? '+' : '') + ev + 'R', +ev)
+  set('sActive',   active)
+  set('sActiveSub', pending + ' pending')
+}
+
+function set(id, val) {
+  const el = document.getElementById(id)
+  if (el) el.textContent = val
+}
+function colorSet(id, val, num) {
+  const el = document.getElementById(id)
+  if (!el) return
+  el.textContent = val
+  el.style.color = num > 0 ? 'var(--green)' : num < 0 ? 'var(--red)' : 'var(--text)'
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+const CHART_DEFAULTS = {
+  responsive: true,
+  plugins: { legend: { display: false } },
+  scales: {
+    x: { ticks: { color: '#8b949e', maxTicksLimit: 8, font: { size: 10 } }, grid: { color: '#21262d' } },
+    y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } }
+  }
+}
+
+function mkChart(id, config) {
+  if (charts[id]) charts[id].destroy()
+  charts[id] = new Chart(document.getElementById(id), config)
+}
+
+function renderCharts(trades) {
+  renderEquity(trades)
+  renderPairChart(trades)
+  renderAccChart('acc1Chart', trades.filter(t => t.account_num === 1), 1)
+  renderAccChart('acc2Chart', trades.filter(t => t.account_num === 2), 2)
+  renderAccChart('acc3Chart', trades.filter(t => t.account_num === 3), 3)
+}
+
+function renderEquity(trades) {
+  const resolved = trades
+    .filter(t => ['WIN','LOSS'].includes(t.status))
+    .sort((a, b) => new Date(a.outcome_time || a.signal_time) - new Date(b.outcome_time || b.signal_time))
+
+  let cum = 0
+  const labels = ['Start']
+  const data   = [0]
+  for (const t of resolved) {
+    cum += t.pnl_r != null ? t.pnl_r : (t.status === 'WIN' ? 2 : -1)
+    labels.push(fmtDate(t.outcome_time || t.signal_time))
+    data.push(+cum.toFixed(2))
+  }
+
+  const color = cum >= 0 ? '#3fb950' : '#f85149'
+  mkChart('equityChart', {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{ label: 'R', data, borderColor: color, backgroundColor: color + '18',
+        tension: 0.3, fill: true, pointRadius: data.length < 50 ? 3 : 0, borderWidth: 2 }]
+    },
+    options: { ...CHART_DEFAULTS,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ctx.raw + 'R' } } },
+      scales: { ...CHART_DEFAULTS.scales,
+        y: { ...CHART_DEFAULTS.scales.y,
+          title: { display: true, text: 'R', color: '#8b949e', font: { size: 10 } } } }
+    }
+  })
+}
+
+function renderPairChart(trades) {
+  const stats = {}
+  for (const t of trades.filter(t => ['WIN','LOSS'].includes(t.status))) {
+    if (!stats[t.pair]) stats[t.pair] = { w: 0, n: 0 }
+    stats[t.pair].n++
+    if (t.status === 'WIN') stats[t.pair].w++
+  }
+  const labels = Object.keys(stats)
+  const rates  = labels.map(p => +(stats[p].w / stats[p].n * 100).toFixed(1))
+  const counts = labels.map(p => stats[p].n)
+  const colors = rates.map(r => r >= 50 ? '#3fb950' : '#f85149')
+
+  mkChart('pairChart', {
+    type: 'bar',
+    data: { labels, datasets: [{ data: rates, backgroundColor: colors, borderRadius: 4 }] },
+    options: { ...CHART_DEFAULTS,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { afterLabel: ctx => counts[ctx.dataIndex] + ' resolved trades' } } },
+      scales: { ...CHART_DEFAULTS.scales,
+        y: { ...CHART_DEFAULTS.scales.y, min: 0, max: 100,
+          ticks: { ...CHART_DEFAULTS.scales.y.ticks, callback: v => v + '%' } } }
+    }
+  })
+}
+
+function renderAccChart(canvasId, trades, accNum) {
+  const resolved = trades.filter(t => ['WIN','LOSS'].includes(t.status))
+  const wins     = resolved.filter(t => t.status === 'WIN').length
+  const losses   = resolved.length - wins
+  const pnl      = trades.reduce((s, t) => s + (t.pnl_usd || 0), 0)
+  const pnlColor = pnl >= 0 ? '#3fb950' : '#f85149'
+
+  mkChart(canvasId, {
+    type: 'doughnut',
+    data: {
+      labels: ['Wins', 'Losses'],
+      datasets: [{
+        data: [wins || 0, losses || 0],
+        backgroundColor: ['#3fb950', '#f85149'],
+        borderColor: '#161b22', borderWidth: 3
+      }]
+    },
+    options: {
+      responsive: true, cutout: '65%',
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#8b949e', font: { size: 10 }, padding: 8 } },
+        tooltip: { callbacks: { label: ctx => ctx.label + ': ' + ctx.raw } },
+      }
+    }
+  })
+}
+
+// ── Table ─────────────────────────────────────────────────────────────────────
+function renderTable(trades) {
+  document.getElementById('tableCount').textContent = trades.length + ' trades'
+  const tbody = document.getElementById('tradesBody')
+  if (!trades.length) {
+    tbody.innerHTML = '<tr><td colspan="13" class="empty">No trades found</td></tr>'
+    return
+  }
+  tbody.innerHTML = trades.map(t => {
+    const sc      = STATUS_CFG[t.status] || STATUS_CFG.PENDING
+    const dirCls  = t.direction === 'BUY' ? 'dir-buy' : 'dir-sell'
+    const pnlR    = t.pnl_r != null ? (t.pnl_r > 0 ? '+' : '') + t.pnl_r + 'R' : '—'
+    const pnlU    = t.pnl_usd != null ? (t.pnl_usd > 0 ? '+$' : '-$') + Math.abs(t.pnl_usd).toFixed(0) : '—'
+    const pnlRCls = t.pnl_r > 0 ? 'pos' : t.pnl_r < 0 ? 'neg' : 'muted'
+    const pnlUCls = t.pnl_usd > 0 ? 'pos' : t.pnl_usd < 0 ? 'neg' : 'muted'
+    const excl    = t.manually_excluded
+    const notesIcon = t.notes ? '📝 ' + t.notes.slice(0, 20) + (t.notes.length > 20 ? '…' : '') : 'Notes'
+    const accLabels = { 1: '$100K', 2: '$25K', 3: '$10K' }
+    const accLbl  = accLabels[t.account_num] || 'Acc' + t.account_num
+
+    return `<tr class="${excl ? 'excluded' : ''}">
+      <td class="muted">${fmtDateTime(t.signal_time)}</td>
+      <td class="pair-cell">${t.pair}</td>
+      <td class="${dirCls}">${t.direction}</td>
+      <td class="muted">${accLbl}</td>
+      <td>${fmt(t.entry_price)}</td>
+      <td class="muted">${fmt(t.sl_price)}</td>
+      <td class="muted">${fmt(t.tp_price)}</td>
+      <td>${t.lots ?? '—'}</td>
+      <td>$${t.risk_usd ?? '—'}</td>
+      <td><span class="badge" style="background:${sc.bg};color:${sc.color};border:1px solid ${sc.border}">${sc.label}</span></td>
+      <td class="${pnlRCls}">${pnlR}</td>
+      <td class="${pnlUCls}">${pnlU}</td>
+      <td>
+        <div class="actions">
+          <button class="btn-sm ${excl ? 'btn-include' : 'btn-not-taken'}"
+            onclick="toggleExcluded(${t.id},${!excl})">${excl ? 'Include' : 'Not Taken'}</button>
+          <button class="btn-sm btn-notes" onclick="editNotes(${t.id},'${esc(t.notes||'')}')">${notesIcon}</button>
+        </div>
+      </td>
+    </tr>`
+  }).join('')
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+async function toggleExcluded(id, value) {
+  await patch({ id, manually_excluded: value })
+}
+
+async function editNotes(id, current) {
+  const note = prompt('Notes for this trade:', unescape(current))
+  if (note === null) return
+  await patch({ id, notes: note })
+}
+
+async function patch(body) {
+  try {
+    const res = await fetch('/api/trades-data', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    if (!res.ok) throw new Error(await res.text())
+    await loadData()
+  } catch (err) { alert('Update failed: ' + err.message) }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmtDate(iso) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+}
+function fmtDateTime(iso) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+function fmt(n) { return n != null ? n : '—' }
+function esc(s) { return s.replace(/'/g, "\\'").replace(/\n/g, ' ') }
+
+// ── Auto-refresh every 30s ────────────────────────────────────────────────────
+setInterval(loadData, 30000)
+loadData()
+</script>
+</body>
+</html>
