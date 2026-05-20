@@ -22,8 +22,8 @@ TradingView candle closes
 
 - **Bullish EBP**: low sweeps prev low AND close > prev candle body high
 - **Bearish EBP**: high sweeps prev high AND close < prev candle body low
-- **Strong EBP+** (wick ≤ 15%): entry at 25%, SL at 75%
-- **Weak EBP** (wick > 15%): entry at 50%, SL at 100%
+- **Strong EBP+** (wick ≤ 15%): entry at 25%, SL at 100% (candle low/high)
+- **Weak EBP** (wick > 15%): entry at 50%, SL at 100% (candle low/high)
 - **TP**: always 2R (2× the SL distance above/below entry)
 - **Break-even**: move SL to entry when new HH (bull) or new LL (bear) forms
 

@@ -76,14 +76,14 @@ float bF25  = high - 0.25 * cRange
 float bF50  = high - 0.50 * cRange
 float bF75  = high - 0.75 * cRange
 float bF100 = low
-float bullStrongTP = bF25 + 2.0 * (bF25 - bF75)
+float bullStrongTP = bF25 + 2.0 * (bF25 - bF100)
 float bullWeakTP   = bF50 + 2.0 * (bF50 - bF100)
 
 float rF25  = low + 0.25 * cRange
 float rF50  = low + 0.50 * cRange
 float rF75  = low + 0.75 * cRange
 float rF100 = high
-float bearStrongTP = rF25 - 2.0 * (rF75 - rF25)
+float bearStrongTP = rF25 - 2.0 * (rF100 - rF25)
 float bearWeakTP   = rF50 - 2.0 * (rF100 - rF50)
 
 // ─── SIGNAL SHAPES (all history) ───────────────────────────────────────────────
@@ -140,7 +140,7 @@ if newSignalConfirmed
     float f100 = isBull ? bF100 : rF100
 
     float entryLvl = isStrong ? (isBull ? bF25  : rF25)  : (isBull ? bF50  : rF50)
-    float slLvl    = isStrong ? (isBull ? bF75  : rF75)  : (isBull ? bF100 : rF100)
+    float slLvl    = isBull ? bF100 : rF100
     float tpLvl    = isBull   ? (isStrong ? bullStrongTP : bullWeakTP) : (isStrong ? bearStrongTP : bearWeakTP)
 
     latestEntry  := entryLvl
@@ -191,7 +191,7 @@ if newSignalConfirmed
             array.push(aLines, line.new(x1=x1, y1=tpLvl,    x2=x2, y2=tpLvl,    color=cTP,    width=2, style=line.style_solid))
             if showLabels
                 array.push(aLabels, label.new(x=x2, y=entryLvl, text="ENTRY 25%  " + str.tostring(entryLvl, format.mintick), color=cEntry, textcolor=color.white, style=label.style_label_left, size=size.small))
-                array.push(aLabels, label.new(x=x2, y=slLvl,    text="SL 75%  "    + str.tostring(slLvl,    format.mintick), color=cSL,    textcolor=color.white, style=label.style_label_left, size=size.small))
+                array.push(aLabels, label.new(x=x2, y=slLvl,    text="SL 100%  "   + str.tostring(slLvl,    format.mintick), color=cSL,    textcolor=color.white, style=label.style_label_left, size=size.small))
                 array.push(aLabels, label.new(x=x2, y=tpLvl,    text="TP 2R  "     + str.tostring(tpLvl,    format.mintick), color=cTP,    textcolor=color.white, style=label.style_label_left, size=size.small))
         else
             array.push(aLines, line.new(x1=x1, y1=entryLvl, x2=x2, y2=entryLvl, color=cEntry, width=2, style=line.style_dashed))
@@ -222,7 +222,7 @@ if newSignalConfirmed
     bool  isB = bullEBP
     bool  isS = isB ? strongBull : strongBear
     float ep  = isB ? (isS ? bF25 : bF50)  : (isS ? rF25 : rF50)
-    float sp  = isB ? (isS ? bF75 : bF100) : (isS ? rF75 : rF100)
+    float sp  = isB ? bF100 : rF100
     float tp  = isB ? (isS ? bullStrongTP : bullWeakTP) : (isS ? bearStrongTP : bearWeakTP)
     array.push(tEntry,  ep)
     array.push(tSL,     sp)
