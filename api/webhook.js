@@ -24,7 +24,11 @@ function calcLots(ticker, entry, sl) {
   } else if (/US30|DJI|DOW|NAS100|NDX|NASDAQ|US500|SPX|SP500|GER|UK100|JP225/.test(sym)) {
     pnlPerLot = dist * 1              // $1/point (adjust per broker)
   } else if (sym.includes('JPY')) {
-    pnlPerLot = dist * 100000 / entry // P&L approx in USD
+    // USDJPY: entry price IS the USDJPY rate → use directly
+    // Cross JPY (GBPJPY, EURJPY): entry is the cross rate, NOT USDJPY
+    // Must divide by USDJPY to convert JPY P&L to USD — use conservative 150 approximation
+    const usdJpyRate = sym.startsWith('USD') ? entry : 150
+    pnlPerLot = dist * 100000 / usdJpyRate
   } else if (sym.startsWith('USD')) {
     pnlPerLot = dist * 100000 / entry // USD base pairs
   } else {
