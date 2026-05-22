@@ -1,4 +1,4 @@
-# EBP Strategy — Project Context for Claude
+# Smart Money AI [Naazr] v3.0 — Project Context for Claude
 
 ## What This Project Is
 
