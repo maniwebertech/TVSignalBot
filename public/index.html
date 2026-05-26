@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Smart Money AI Dashboard</title>
+<title>CRT NAS100 Signal Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -19,12 +19,10 @@
     --yellow: #d29922;
     --cyan:   #79c0ff;
     --orange: #e3b341;
-    --purple: #bc8cff;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; }
-
-  .app { max-width: 1440px; margin: 0 auto; padding: 16px; }
+  .app { max-width: 1280px; margin: 0 auto; padding: 16px; }
 
   /* Header */
   .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
@@ -39,10 +37,9 @@
   .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; align-items: center; }
   .filters select { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; }
   .filters select:focus { outline: none; border-color: var(--blue); }
-  .filter-sep { color: var(--border); font-size: 18px; }
 
   /* Stats */
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px; }
   .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
   .stat-label { color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 6px; }
   .stat-value { font-size: 22px; font-weight: 700; line-height: 1; }
@@ -72,29 +69,26 @@
 
   /* Badges */
   .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; }
-  .badge-triggered { background: #1f2937; color: var(--muted); }
-  .badge-filled    { background: #1c2a1c; color: var(--yellow); border: 1px solid #3a3a10; }
-  .badge-be_active { background: #0f2a33; color: var(--cyan); }
-  .badge-tp2_hit   { background: #0d2818; color: var(--green); }
-  .badge-sl_hit    { background: #2a0d0d; color: var(--red); }
-  .badge-be_exit   { background: #1c1c2a; color: var(--muted); }
-  .badge-cancelled { background: #1c1c1c; color: var(--muted); }
-  .badge-long      { background: #0d2818; color: var(--green); }
-  .badge-short     { background: #2a0d0d; color: var(--red); }
+  .badge-triggered  { background: #1f2937; color: var(--muted); }
+  .badge-tp2_hit    { background: #0d2818; color: var(--green); }
+  .badge-sl_hit     { background: #2a0d0d; color: var(--red); }
+  .badge-cancelled  { background: #1c1c1c; color: var(--muted); }
+  .badge-long       { background: #0d2818; color: var(--green); }
+  .badge-short      { background: #2a0d0d; color: var(--red); }
 
-  /* PnL colors */
+  /* PnL */
   .pnl-pos { color: var(--green); font-weight: 600; }
   .pnl-neg { color: var(--red);   font-weight: 600; }
   .pnl-zero{ color: var(--muted); }
 
-  /* Action buttons in table */
+  /* Action */
   .btn-action { background: var(--card2); border: 1px solid var(--border); color: var(--text); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 10px; }
   .btn-action:hover { border-color: var(--blue); color: var(--blue); }
 
   /* Modal */
   .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
   .modal-overlay.open { display: flex; }
-  .modal { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 24px; min-width: 320px; max-width: 480px; width: 90%; }
+  .modal { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 24px; min-width: 320px; max-width: 440px; width: 90%; }
   .modal h3 { font-size: 15px; font-weight: 700; margin-bottom: 16px; }
   .modal select { width: 100%; background: var(--card2); border: 1px solid var(--border); color: var(--text); padding: 8px 10px; border-radius: 6px; font-size: 13px; margin-bottom: 12px; }
   .modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
@@ -108,7 +102,7 @@
   <!-- Header -->
   <div class="header">
     <div class="header-left">
-      <div class="logo">Smart Money AI <span>v3.0 Dashboard</span></div>
+      <div class="logo">CRT NAS100 <span>Signal Dashboard</span></div>
       <span class="last-updated" id="lastUpdated">Loading…</span>
     </div>
     <button class="btn-refresh" onclick="loadTrades()">↻ Refresh</button>
@@ -116,14 +110,6 @@
 
   <!-- Filters -->
   <div class="filters">
-    <select id="filterPair" onchange="applyFilters()">
-      <option value="all">All Pairs</option>
-      <option>XAUUSD</option>
-      <option>EURUSD</option>
-      <option>GBPUSD</option>
-      <option>USDJPY</option>
-      <option>GBPJPY</option>
-    </select>
     <select id="filterDir" onchange="applyFilters()">
       <option value="all">Both Directions</option>
       <option value="LONG">LONG only</option>
@@ -131,12 +117,9 @@
     </select>
     <select id="filterStatus" onchange="applyFilters()">
       <option value="all">All Statuses</option>
-      <option value="TRIGGERED">Triggered</option>
-      <option value="FILLED">Filled</option>
-      <option value="BE_ACTIVE">BE Active</option>
-      <option value="TP2_HIT">TP2 Hit ✅</option>
+      <option value="TRIGGERED">Triggered (Pending)</option>
+      <option value="TP2_HIT">TP Hit ✅</option>
       <option value="SL_HIT">SL Hit ❌</option>
-      <option value="BE_EXIT">BE Exit</option>
       <option value="CANCELLED">Cancelled</option>
     </select>
     <select id="filterDays" onchange="loadTrades()">
@@ -152,27 +135,22 @@
     <div class="stat-card neutral">
       <div class="stat-label">Signals</div>
       <div class="stat-value" id="statTotal">—</div>
-      <div class="stat-sub">total triggered</div>
+      <div class="stat-sub">total fired</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Active</div>
       <div class="stat-value" id="statActive" style="color:var(--cyan)">—</div>
-      <div class="stat-sub">open trades</div>
+      <div class="stat-sub">pending / open</div>
     </div>
     <div class="stat-card positive">
       <div class="stat-label">Wins</div>
       <div class="stat-value" id="statWins">—</div>
-      <div class="stat-sub">TP2 hit</div>
+      <div class="stat-sub">TP hit</div>
     </div>
     <div class="stat-card negative">
       <div class="stat-label">Losses</div>
       <div class="stat-value" id="statLosses">—</div>
       <div class="stat-sub">SL hit</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">BE</div>
-      <div class="stat-value" id="statBE" style="color:var(--muted)">—</div>
-      <div class="stat-sub">break-even exits</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Win Rate</div>
@@ -187,7 +165,7 @@
     <div class="stat-card">
       <div class="stat-label">Risk / Trade</div>
       <div class="stat-value" style="color:var(--orange)">$50</div>
-      <div class="stat-sub">$10K account</div>
+      <div class="stat-sub">$9.87K account</div>
     </div>
   </div>
 
@@ -217,19 +195,15 @@
             <th>Pair</th>
             <th>Dir</th>
             <th>Entry</th>
+            <th>TP</th>
             <th>SL</th>
-            <th>TP1</th>
-            <th>TP2</th>
             <th>Lots</th>
             <th>Status</th>
             <th>P&amp;L</th>
-            <th>Quality</th>
-            <th>HTF</th>
-            <th>Stack</th>
             <th>Action</th>
           </tr>
         </thead>
-        <tbody id="tradeBody"><tr><td colspan="14" class="loading">Loading…</td></tr></tbody>
+        <tbody id="tradeBody"><tr><td colspan="10" class="loading">Loading…</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -241,12 +215,9 @@
   <div class="modal">
     <h3>Update Trade Status</h3>
     <select id="modalStatus">
-      <option value="TRIGGERED">Triggered</option>
-      <option value="FILLED">Filled</option>
-      <option value="BE_ACTIVE">BE Active</option>
-      <option value="TP2_HIT">TP2 Hit ✅</option>
+      <option value="TRIGGERED">Triggered (Pending)</option>
+      <option value="TP2_HIT">TP Hit ✅</option>
       <option value="SL_HIT">SL Hit ❌</option>
-      <option value="BE_EXIT">BE Exit</option>
       <option value="CANCELLED">Cancelled</option>
     </select>
     <div class="modal-footer">
@@ -279,12 +250,10 @@ async function loadTrades() {
 }
 
 function applyFilters() {
-  const pair   = document.getElementById('filterPair').value
   const dir    = document.getElementById('filterDir').value
   const status = document.getElementById('filterStatus').value
 
   let trades = allTrades
-  if (pair   !== 'all') trades = trades.filter(t => t.ticker    === pair)
   if (dir    !== 'all') trades = trades.filter(t => t.direction === dir)
   if (status !== 'all') trades = trades.filter(t => t.status    === status)
 
@@ -295,13 +264,12 @@ function applyFilters() {
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
 function renderStats(trades) {
-  const wins    = trades.filter(t => t.status === 'TP2_HIT')
-  const losses  = trades.filter(t => t.status === 'SL_HIT')
-  const be      = trades.filter(t => t.status === 'BE_EXIT')
-  const active  = trades.filter(t => ['TRIGGERED','FILLED','BE_ACTIVE'].includes(t.status))
-  const total   = trades.length
-  const wr      = (wins.length + losses.length) > 0
-    ? ((wins.length / (wins.length + losses.length)) * 100).toFixed(0) + '%'
+  const wins   = trades.filter(t => t.status === 'TP2_HIT').length
+  const losses = trades.filter(t => t.status === 'SL_HIT').length
+  const active = trades.filter(t => t.status === 'TRIGGERED').length
+  const total  = trades.length
+  const wr     = (wins + losses) > 0
+    ? ((wins / (wins + losses)) * 100).toFixed(0) + '%'
     : '—'
 
   const pnlClosed = trades
@@ -312,34 +280,28 @@ function renderStats(trades) {
     .filter(t => t.pnl_r != null)
     .reduce((s, t) => s + parseFloat(t.pnl_r), 0)
 
-  document.getElementById('statTotal').textContent  = total
-  document.getElementById('statActive').textContent = active.length
-  document.getElementById('statWins').textContent   = wins.length
-  document.getElementById('statLosses').textContent = losses.length
-  document.getElementById('statBE').textContent     = be.length
-  document.getElementById('statWR').textContent     = wr
-  document.getElementById('statWR').style.color     = wr === '—' ? 'var(--muted)' : parseFloat(wr) >= 50 ? 'var(--green)' : 'var(--red)'
+  document.getElementById('statTotal').textContent   = total
+  document.getElementById('statActive').textContent  = active
+  document.getElementById('statWins').textContent    = wins
+  document.getElementById('statLosses').textContent  = losses
+  document.getElementById('statWR').textContent      = wr
+  document.getElementById('statWR').style.color      =
+    wr === '—' ? 'var(--muted)' : parseFloat(wr) >= 50 ? 'var(--green)' : 'var(--red)'
 
   const pnlEl = document.getElementById('statPnL')
-  const pnlCard = document.getElementById('pnlCard')
-  pnlEl.textContent = (pnlClosed >= 0 ? '+' : '') + '$' + pnlClosed.toFixed(0)
-  pnlEl.style.color = pnlClosed > 0 ? 'var(--green)' : pnlClosed < 0 ? 'var(--red)' : 'var(--muted)'
+  pnlEl.textContent    = (pnlClosed >= 0 ? '+' : '') + '$' + pnlClosed.toFixed(0)
+  pnlEl.style.color    = pnlClosed > 0 ? 'var(--green)' : pnlClosed < 0 ? 'var(--red)' : 'var(--muted)'
   document.getElementById('statPnLR').textContent = (pnlR >= 0 ? '+' : '') + pnlR.toFixed(1) + 'R'
 }
 
 // ── Table ─────────────────────────────────────────────────────────────────────
 function statusBadge(s) {
-  const map = {
-    TRIGGERED: 'Triggered',  FILLED:    'Filled',
-    BE_ACTIVE: 'BE Active',  TP2_HIT:   'TP2 ✅',
-    SL_HIT:    'SL ❌',       BE_EXIT:   'BE Exit',
-    CANCELLED: 'Cancelled'
-  }
+  const map = { TRIGGERED: '⏳ Pending', TP2_HIT: '✅ TP Hit', SL_HIT: '❌ SL Hit', CANCELLED: 'Cancelled' }
   return `<span class="badge badge-${s.toLowerCase()}">${map[s] || s}</span>`
 }
 
 function dirBadge(d) {
-  return `<span class="badge badge-${d.toLowerCase()}">${d}</span>`
+  return `<span class="badge badge-${d.toLowerCase()}">${d === 'LONG' ? '🟢 BUY' : '🔴 SELL'}</span>`
 }
 
 function pnlCell(t) {
@@ -350,9 +312,9 @@ function pnlCell(t) {
   return `<span class="${cls}">${v >= 0 ? '+' : ''}$${Math.abs(v).toFixed(0)}${r}</span>`
 }
 
-function fmt(n, d = 5) {
+function fmt(n, d = 2) {
   if (n == null) return '—'
-  return parseFloat(n).toFixed(Math.min(d, 6))
+  return parseFloat(n).toFixed(d)
 }
 
 function fmtTime(iso) {
@@ -366,24 +328,20 @@ function renderTable(trades) {
   document.getElementById('tableCount').textContent = trades.length + ' trades'
   const body = document.getElementById('tradeBody')
   if (!trades.length) {
-    body.innerHTML = '<tr><td colspan="14" class="empty">No trades found</td></tr>'
+    body.innerHTML = '<tr><td colspan="10" class="empty">No trades found</td></tr>'
     return
   }
   body.innerHTML = trades.map(t => `
     <tr>
       <td>${fmtTime(t.signal_time)}</td>
-      <td><strong>${t.ticker}</strong></td>
+      <td><strong>${t.ticker || 'NAS100'}</strong></td>
       <td>${dirBadge(t.direction)}</td>
       <td>${fmt(t.entry_price)}</td>
-      <td>${fmt(t.sl_price)}</td>
       <td>${fmt(t.tp1_price)}</td>
-      <td>${fmt(t.tp2_price)}</td>
+      <td>${fmt(t.sl_price)}</td>
       <td>${t.lots || '—'}</td>
       <td>${statusBadge(t.status)}</td>
       <td>${pnlCell(t)}</td>
-      <td style="color:var(--cyan)">${t.quality || '—'}</td>
-      <td>${t.htf_bias || '—'}</td>
-      <td style="font-size:10px;color:var(--muted)">${t.mtf_stack || '—'}</td>
       <td><button class="btn-action" onclick="openModal(${t.id},'${t.status}')">Edit</button></td>
     </tr>
   `).join('')
@@ -391,7 +349,6 @@ function renderTable(trades) {
 
 // ── Charts ────────────────────────────────────────────────────────────────────
 function renderCharts(trades) {
-  // Equity curve — chronological closed trades
   const closed = trades
     .filter(t => t.pnl_usd != null)
     .sort((a, b) => new Date(a.signal_time) - new Date(b.signal_time))
@@ -410,10 +367,7 @@ function renderCharts(trades) {
       labels: eqLabels,
       datasets: [{
         data: eqData,
-        borderColor: (ctx) => {
-          const v = ctx.dataset.data.slice(-1)[0]
-          return v >= 0 ? '#3fb950' : '#f85149'
-        },
+        borderColor: eqData.length && eqData[eqData.length - 1] >= 0 ? '#3fb950' : '#f85149',
         borderWidth: 2,
         fill: { target: 'origin', above: 'rgba(63,185,80,0.08)', below: 'rgba(248,81,73,0.08)' },
         tension: 0.3,
@@ -431,21 +385,19 @@ function renderCharts(trades) {
     }
   })
 
-  // Pie chart — outcome distribution
-  const wins     = trades.filter(t => t.status === 'TP2_HIT').length
-  const losses   = trades.filter(t => t.status === 'SL_HIT').length
-  const beExits  = trades.filter(t => t.status === 'BE_EXIT').length
-  const active   = trades.filter(t => ['TRIGGERED','FILLED','BE_ACTIVE'].includes(t.status)).length
+  const wins      = trades.filter(t => t.status === 'TP2_HIT').length
+  const losses    = trades.filter(t => t.status === 'SL_HIT').length
+  const active    = trades.filter(t => t.status === 'TRIGGERED').length
   const cancelled = trades.filter(t => t.status === 'CANCELLED').length
 
   if (pieChart) pieChart.destroy()
   pieChart = new Chart(document.getElementById('pieChart'), {
     type: 'doughnut',
     data: {
-      labels:   ['TP2 Hit', 'SL Hit', 'BE Exit', 'Active', 'Cancelled'],
+      labels:   ['TP Hit', 'SL Hit', 'Pending', 'Cancelled'],
       datasets: [{
-        data:            [wins, losses, beExits, active, cancelled],
-        backgroundColor: ['#3fb950', '#f85149', '#8b949e', '#58a6ff', '#30363d'],
+        data:            [wins, losses, active, cancelled],
+        backgroundColor: ['#3fb950', '#f85149', '#58a6ff', '#30363d'],
         borderColor:     '#161b22',
         borderWidth: 2
       }]
@@ -459,7 +411,7 @@ function renderCharts(trades) {
   })
 }
 
-// ── Modal (manual status edit) ────────────────────────────────────────────────
+// ── Modal ─────────────────────────────────────────────────────────────────────
 function openModal(id, currentStatus) {
   modalTradeId = id
   document.getElementById('modalStatus').value = currentStatus
@@ -487,7 +439,6 @@ document.getElementById('modal').addEventListener('click', e => {
   if (e.target === document.getElementById('modal')) closeModal()
 })
 
-// ── Init ──────────────────────────────────────────────────────────────────────
 loadTrades()
 setInterval(loadTrades, 60000)
 </script>
