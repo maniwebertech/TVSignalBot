@@ -18,19 +18,25 @@ module.exports = async (req, res) => {
     })
   }
 
-  // POST — send real test message
+  // POST — send real test message (CRT NAS100 sample)
   if (req.method === 'POST') {
     try {
+      // Simulated CRT 15M BUY signal on NAS100
+      // SL dist = 12 pts  →  lots = 50 / (12 × 10) = 0.42
+      const now = new Date().toLocaleString('en-US', {
+        timeZone: 'America/New_York', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      }) + ' NY'
       const testMessage =
-        '✅ EBP Webhook Test\n\n' +
-        'XAUUSD SELL\n\n' +
-        'ENTRY: 2645.30\n' +
-        'TP: 2601.50\n' +
-        'SL: 2667.40\n\n' +
-        '$100K LOT SIZE: 0.45 lots ($1000 risk)\n' +
-        '$25K LOT SIZE: 0.06 lots ($125 risk)\n' +
-        '$10K LOT SIZE: 0.02 lots ($50 risk)\n\n' +
-        'If you got this on WhatsApp, your webhook is fully working!'
+        `🟢 *BUY* *NAS100*  @  0.42 lots\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `📍 Entry:   29854.15\n` +
+        `🎯 TP:      29872.15\n` +
+        `🛑 SL:      29842.15\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `💰 Risk: $50  |  SL dist: 12.00 pts\n` +
+        `⏱ 15M · CRT Signal · ${now}\n\n` +
+        `✅ If you got this, your webhook is working!`
 
       const apiUrl = `${process.env.MIGASTONE_URL}/migawhatsapp/api_send/message`
       const body = new URLSearchParams({

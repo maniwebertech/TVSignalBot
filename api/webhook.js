@@ -21,8 +21,8 @@ function calcLots(ticker, entry, sl) {
     pnlPerLot = dist * 5000           // 5000 oz/lot
   } else if (/BRENT|WTI|USOIL|UKOIL|OIL|CRUDE/.test(sym)) {
     pnlPerLot = dist * 100            // 100 barrels/lot
-  } else if (/US30|DJI|DOW|NAS100|NDX|NASDAQ|US500|SPX|SP500|GER|UK100|JP225/.test(sym)) {
-    pnlPerLot = dist * 1              // $1/point (adjust per broker)
+  } else if (/US30|DJI|DOW|NAS100|NDX|NASDAQ|US500|SPX|SP500|GER|UK100|JP225|FRA|CAC|JAP/.test(sym)) {
+    pnlPerLot = dist * 10             // $10/point per standard lot (NAS100/indices — Blueberry default)
   } else if (sym.includes('JPY')) {
     // USDJPY: entry price IS the USDJPY rate → use directly
     // Cross JPY (GBPJPY, EURJPY): entry is the cross rate, NOT USDJPY
@@ -42,7 +42,7 @@ function calcLots(ticker, entry, sl) {
 // ── Pip distance helper for display ──────────────────────────────────────────
 function pipsStr(ticker, dist) {
   const sym = ticker.replace(/^[A-Z]+:/, '').toUpperCase()
-  if (/XAU|GOLD|XAG|SILVER|BRENT|OIL|US30|NAS|SPX|GER|UK100/.test(sym)) {
+  if (/XAU|GOLD|XAG|SILVER|BRENT|OIL|US30|NAS|SPX|GER|UK100|FRA|CAC|JAP|JP225/.test(sym)) {
     return dist.toFixed(2) + ' pts'
   }
   const pip = sym.includes('JPY') ? 0.01 : 0.0001
@@ -124,6 +124,51 @@ function buildOutcomeMsg(data, direction, isWin, pnlUsd) {
   )
 }
 
+// ── CRT message builders ──────────────────────────────────────────────────────
+function buildCRTEntryMsg(data, lots, direction) {
+  const { ticker, entry, sl, tp, timeframe } = data
+  const rr_dist = Math.abs(tp - entry)
+  const sl_dist_pts = Math.abs(entry - sl).toFixed(2)
+  const arrow   = direction === 'LONG'  ? '🟢 *BUY*'  : '🔴 *SELL*'
+  const tf_lbl  = timeframe ? `${timeframe}M` : '15M'
+  const now     = new Date().toLocaleString('en-US', {
+    timeZone: 'America/New_York', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  }) + ' NY'
+  return (
+    `${arrow} *${ticker}*  @  ${lots} lots\n` +
+    `━━━━━━━━━━━━━━━━━━━━━\n` +
+    `📍 Entry:   ${entry}\n` +
+    `🎯 TP:      ${tp}\n` +
+    `🛑 SL:      ${sl}\n` +
+    `━━━━━━━━━━━━━━━━━━━━━\n` +
+    `💰 Risk: $${RISK_USD}  |  SL dist: ${sl_dist_pts} pts\n` +
+    `⏱ ${tf_lbl} · CRT Signal · ${now}`
+  )
+}
+
+function buildCRTOutcomeMsg(data, direction, isWin) {
+  const { ticker, entry, sl, tp, timeframe, lots } = data
+  const icon    = isWin ? '✅ *TP HIT*' : '❌ *SL HIT*'
+  const arrow   = direction === 'LONG'  ? '🟢 BUY'  : '🔴 SELL'
+  const pnl     = isWin ? `+$${RISK_USD * 1.5}` : `-$${RISK_USD}`
+  const tf_lbl  = timeframe ? `${timeframe}M` : '15M'
+  const now     = new Date().toLocaleString('en-US', {
+    timeZone: 'America/New_York', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  }) + ' NY'
+  return (
+    `${icon}  ${arrow} *${ticker}*\n` +
+    `━━━━━━━━━━━━━━━━━━━━━\n` +
+    `📍 Entry:  ${entry || '-'}\n` +
+    `🎯 TP:     ${tp || '-'}\n` +
+    `🛑 SL:     ${sl || '-'}\n` +
+    `━━━━━━━━━━━━━━━━━━━━━\n` +
+    `💰 P&L: ${pnl}  |  ${lots || '-'} lots\n` +
+    `⏱ ${tf_lbl} · CRT Signal · ${now}`
+  )
+}
+
 // ── Supabase helper ──────────────────────────────────────────────────────────
 async function sb(method, path, body = null) {
   const opts = {
@@ -179,16 +224,94 @@ module.exports = async (req, res) => {
     let data = {}
     try { data = JSON.parse(raw) } catch { data = { raw } }
 
+    const ticker    = data.ticker || 'UNKNOWN'
+    const direction = data.side === 'SHORT' ? 'SHORT' : 'LONG'
+    const now       = new Date().toISOString()
+
+    // ── CRT signal handler ────────────────────────────────────────────────────
+    if (data.source === 'CRT') {
+      const crtEvent = (data.event || '').toUpperCase()
+      console.log(`CRT Alert | ticker=${ticker} | event=${crtEvent}`)
+
+      let waMsg = ''
+      let dbResult = null
+
+      if (crtEvent === 'BUY SIGNAL' || crtEvent === 'SELL SIGNAL') {
+        const entry = parseFloat(data.entry)
+        const sl    = parseFloat(data.sl)
+        const tp    = parseFloat(data.tp)
+
+        if (!entry || !sl || !tp) {
+          console.warn('CRT signal missing prices')
+          return res.status(200).json({ success: true, action: 'crt_missing_prices', ticker })
+        }
+
+        if (SUPABASE_URL && SUPABASE_KEY) {
+          const existing = await findActiveTrade(ticker, direction)
+          if (existing) {
+            console.log(`CRT duplicate — active ${direction} for ${ticker}, skipping`)
+            return res.status(200).json({ success: true, action: 'crt_duplicate_skipped', ticker, direction })
+          }
+        }
+
+        const lots = calcLots(ticker, entry, sl)
+        waMsg = buildCRTEntryMsg({ ...data, entry, sl, tp }, lots, direction)
+
+        if (SUPABASE_URL && SUPABASE_KEY) {
+          dbResult = await sb('POST', '/trades', {
+            ticker, direction,
+            entry_price: entry, sl_price: sl, tp1_price: tp, tp2_price: tp,
+            lots, risk_usd: RISK_USD,
+            setup_mode: 'CRT',
+            status: 'TRIGGERED',
+            signal_time: now,
+            raw_message: raw
+          })
+        }
+      } else if (crtEvent === 'TAKE-PROFIT SIGNAL') {
+        if (SUPABASE_URL && SUPABASE_KEY) {
+          const t = await findActiveTrade(ticker, direction)
+          if (t) {
+            dbResult = await sb('PATCH', `/trades?id=eq.${t.id}`,
+              { status: 'TP2_HIT', outcome_time: now, pnl_r: 1.5, pnl_usd: RISK_USD * 1.5 })
+            waMsg = buildCRTOutcomeMsg({ ...data,
+              entry: t.entry_price, sl: t.sl_price, tp: t.tp1_price, lots: t.lots
+            }, direction, true)
+          }
+        }
+        if (!waMsg) waMsg = buildCRTOutcomeMsg(data, direction, true)
+      } else if (crtEvent === 'STOP-LOSS SIGNAL') {
+        if (SUPABASE_URL && SUPABASE_KEY) {
+          const t = await findActiveTrade(ticker, direction)
+          if (t) {
+            dbResult = await sb('PATCH', `/trades?id=eq.${t.id}`,
+              { status: 'SL_HIT', outcome_time: now, pnl_usd: -RISK_USD, pnl_r: -1 })
+            waMsg = buildCRTOutcomeMsg({ ...data,
+              entry: t.entry_price, sl: t.sl_price, tp: t.tp1_price, lots: t.lots
+            }, direction, false)
+          }
+        }
+        if (!waMsg) waMsg = buildCRTOutcomeMsg(data, direction, false)
+      }
+
+      let waResult = {}
+      if (waMsg) {
+        waResult = await sendWhatsApp(waMsg)
+        if (waResult?.error) console.error('MigaStone error:', waResult)
+      }
+
+      return res.status(200).json({
+        success: true, action: 'crt_' + crtEvent.toLowerCase().replace(/ /g, '_'),
+        ticker, direction, wa: waResult?.data, db: dbResult
+      })
+    }
+
     const ev = eventType(data.event)
-    console.log(`SMA Alert | ticker=${data.ticker} | event=${data.event} | type=${ev}`)
+    console.log(`SMA Alert | ticker=${ticker} | event=${data.event} | type=${ev}`)
 
     if (ev === 'info') {
       return res.status(200).json({ success: true, action: 'ignored', event: data.event })
     }
-
-    const ticker    = data.ticker || 'UNKNOWN'
-    const direction = data.side === 'LONG' ? 'LONG' : 'SHORT'
-    const now       = new Date().toISOString()
 
     let waMsg = ''
     let dbResult = null
@@ -205,29 +328,32 @@ module.exports = async (req, res) => {
         return res.status(200).json({ success: true, action: 'trigger_no_prices', ticker, direction })
       }
 
+      // Check for existing active trade FIRST — skip duplicate entirely (no WA, no DB)
+      if (SUPABASE_URL && SUPABASE_KEY) {
+        const existing = await findActiveTrade(ticker, direction)
+        if (existing) {
+          console.log(`Duplicate signal — active ${direction} trade exists for ${ticker} (id=${existing.id}), skipping`)
+          return res.status(200).json({ success: true, action: 'trigger_duplicate_skipped', ticker, direction })
+        }
+      }
+
       const lots = calcLots(ticker, entry, sl)
       waMsg = buildTriggerMsg({ ...data, entry, inv: sl, tp1, tp2 }, lots, direction)
 
       if (SUPABASE_URL && SUPABASE_KEY) {
-        // Check for existing active trade on same ticker+direction — skip duplicate
-        const existing = await findActiveTrade(ticker, direction)
-        if (!existing) {
-          dbResult = await sb('POST', '/trades', {
-            ticker, direction,
-            entry_price: entry, sl_price: sl, tp1_price: tp1, tp2_price: tp2,
-            lots, risk_usd: RISK_USD,
-            quality:    data.quality    || null,
-            htf_bias:   data.htf_bias   || null,
-            mtf_stack:  data.mtf_stack  || null,
-            setup_mode: data.setup_mode || null,
-            exec_mode:  data.exec_mode  || null,
-            status: 'TRIGGERED',
-            signal_time: now,
-            raw_message: raw
-          })
-        } else {
-          console.log(`Duplicate signal — active ${direction} trade exists for ${ticker} (id=${existing.id}), skipping DB insert`)
-        }
+        dbResult = await sb('POST', '/trades', {
+          ticker, direction,
+          entry_price: entry, sl_price: sl, tp1_price: tp1, tp2_price: tp2,
+          lots, risk_usd: RISK_USD,
+          quality:    data.quality    || null,
+          htf_bias:   data.htf_bias   || null,
+          mtf_stack:  data.mtf_stack  || null,
+          setup_mode: data.setup_mode || null,
+          exec_mode:  data.exec_mode  || null,
+          status: 'TRIGGERED',
+          signal_time: now,
+          raw_message: raw
+        })
       }
     }
 

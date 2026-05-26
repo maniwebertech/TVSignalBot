@@ -66,6 +66,14 @@ module.exports = async (req, res) => {
       return res.status(200).json({ success: true, trade: result?.[0] })
     }
 
+    if (req.method === 'DELETE') {
+      if (req.query.confirm !== 'purge') {
+        return res.status(400).json({ error: 'Add ?confirm=purge to delete all trades' })
+      }
+      await sb('DELETE', '/trades?id=gt.0')
+      return res.status(200).json({ success: true, message: 'All trades deleted' })
+    }
+
     return res.status(405).json({ error: 'Method not allowed' })
   } catch (err) {
     console.error('trades-data error:', err.message)
